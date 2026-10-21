@@ -21,8 +21,27 @@ services:
     build: ./mock-llm
     # The script has no SIGTERM handler; an init process makes `docker compose stop` immediate.
     init: true
+    # Published so the demo can drive /control/* (stats, failNext, latency) from the host.
     ports:
       - "4001:4001"
+
+  # API + built frontend on http://localhost:3000. Migrations run on startup.
+  app:
+    build: .
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgres://app:app@db:5432/competitorpulse
+      LLM_BASE_URL: http://mock-llm:4001/v1
+      LLM_API_KEY: mock
+      LLM_MODEL: mock-llm
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-10000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+      mock-llm:
+        condition: service_healthy
 
 volumes:
   pgdata:
