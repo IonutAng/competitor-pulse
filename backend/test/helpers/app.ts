@@ -1,7 +1,7 @@
 import { buildApp } from '../../src/app.js';
 import { loadConfig, type Config } from '../../src/config.js';
 import type { Db } from '../../src/db/index.js';
-import { buildDeps, type Deps } from '../../src/deps.js';
+import { buildDeps, type Deps, type DepsOverrides } from '../../src/deps.js';
 import { TEST_DATABASE_URL } from './db.js';
 
 export function testConfig(overrides: NodeJS.ProcessEnv = {}): Config {
@@ -13,7 +13,7 @@ export function testConfig(overrides: NodeJS.ProcessEnv = {}): Config {
   });
 }
 
-export function testDeps(db: Db, env: NodeJS.ProcessEnv = {}, overrides: Partial<Pick<Deps, 'source'>> = {}): Deps {
+export function testDeps(db: Db, env: NodeJS.ProcessEnv = {}, overrides: DepsOverrides = {}): Deps {
   return buildDeps(testConfig(env), db, overrides);
 }
 
