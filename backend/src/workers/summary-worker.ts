@@ -12,7 +12,10 @@ const LEASE_GRACE_MS = 5000;
 function describeLlmError(err: unknown, timeoutMs: number): string {
   const kind = err instanceof Error ? err.constructor.name : '';
   const message = errorMessage(err);
-  if (['AbortError', 'TimeoutError', 'APIUserAbortError', 'APIConnectionTimeoutError'].includes(kind) || /aborted|timed out/i.test(message)) {
+  if (
+    ['AbortError', 'TimeoutError', 'APIUserAbortError', 'APIConnectionTimeoutError'].includes(kind) ||
+    /aborted|timed out/i.test(message)
+  ) {
     return `LLM call timed out after ${timeoutMs} ms`;
   }
   return message;
@@ -65,11 +68,17 @@ export class SummaryWorker {
       log.info('snapshot was removed before it could be summarized');
       return;
     }
-    const previous = snapshot.previousSnapshotId === null ? undefined : await snapshots.getById(snapshot.previousSnapshotId);
+    const previous =
+      snapshot.previousSnapshotId === null ? undefined : await snapshots.getById(snapshot.previousSnapshotId);
     if (!previous) {
       // Cannot happen through recordPoll (only diffs against a previous row are "changed"), but a
       // job must always end in a terminal state.
-      await snapshots.failSummary(id, attempt, 'previous snapshot is missing; nothing to compare against', null);
+      await snapshots.failSummary(
+        id,
+        attempt,
+        'previous snapshot is missing; nothing to compare against',
+        null,
+      );
       log.error('summary failed: previous snapshot missing');
       return;
     }

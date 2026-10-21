@@ -53,14 +53,19 @@ export class PollWorker {
       const listing = await source.fetchListing(id, AbortSignal.timeout(config.SOURCE_TIMEOUT_MS));
       const { snapshot, previous } = await snapshots.recordPoll(id, listing);
       const outcome =
-        previous === undefined ? 'initial snapshot' : snapshot.changed ? 'listing changed' : 'listing unchanged';
+        previous === undefined
+          ? 'initial snapshot'
+          : snapshot.changed
+            ? 'listing changed'
+            : 'listing unchanged';
       log.info({ snapshotId: snapshot.id, changedFields: snapshot.changedFields }, outcome);
     } catch (err) {
       if (pgErrorCode(err) === PG_FOREIGN_KEY_VIOLATION) {
         log.info('competitor was removed while being polled; result dropped');
         return;
       }
-      const message = err instanceof UnknownCompetitorError ? err.message : `Fetch failed: ${errorMessage(err)}`;
+      const message =
+        err instanceof UnknownCompetitorError ? err.message : `Fetch failed: ${errorMessage(err)}`;
       log.warn({ err }, 'poll failed');
       await competitors
         .recordError(id, message)

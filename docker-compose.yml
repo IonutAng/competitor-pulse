@@ -7,12 +7,12 @@ services:
       POSTGRES_DB: competitorpulse
     # Host port 5439 by default so a Postgres already running on 5432 is left alone.
     ports:
-      - "${POSTGRES_PORT:-5439}:5432"
+      - '${POSTGRES_PORT:-5439}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/db-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d competitorpulse"]
+      test: ['CMD-SHELL', 'pg_isready -U app -d competitorpulse']
       interval: 2s
       timeout: 3s
       retries: 15
@@ -23,13 +23,13 @@ services:
     init: true
     # Published so the demo can drive /control/* (stats, failNext, latency) from the host.
     ports:
-      - "4001:4001"
+      - '4001:4001'
 
   # API + built frontend on http://localhost:3000. Migrations run on startup.
   app:
     build: .
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - '${APP_PORT:-3000}:3000'
     environment:
       DATABASE_URL: postgres://app:app@db:5432/competitorpulse
       LLM_BASE_URL: http://mock-llm:4001/v1

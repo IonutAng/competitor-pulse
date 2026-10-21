@@ -23,7 +23,10 @@ describe('retry policy', () => {
   it('decides retry vs give up from the attempt number and the error', () => {
     expect(decideRetry(1, 3, new Error('timeout'))).toEqual({ outcome: 'retry', delayMs: 2000 });
     expect(decideRetry(2, 3, httpError(500))).toEqual({ outcome: 'retry', delayMs: 4000 });
-    expect(decideRetry(3, 3, new Error('timeout'))).toMatchObject({ outcome: 'give_up', reason: /max attempts/ });
+    expect(decideRetry(3, 3, new Error('timeout'))).toMatchObject({
+      outcome: 'give_up',
+      reason: /max attempts/,
+    });
     expect(decideRetry(1, 3, httpError(401))).toMatchObject({ outcome: 'give_up', reason: 'not retryable' });
   });
 });

@@ -36,7 +36,9 @@ export function CompetitorList() {
       <div className="section-head">
         <div>
           <h1>Tracked competitors</h1>
-          <p className="lede">Each competitor is polled on a schedule; every change to its listing gets a plain-English summary.</p>
+          <p className="lede">
+            Each competitor is polled on a schedule; every change to its listing gets a plain-English summary.
+          </p>
         </div>
       </div>
 
@@ -119,7 +121,10 @@ export function CompetitorList() {
                     {competitor.lastPolledAt ? (
                       <span>
                         polled{' '}
-                        <time dateTime={competitor.lastPolledAt} title={formatDateTime(competitor.lastPolledAt)}>
+                        <time
+                          dateTime={competitor.lastPolledAt}
+                          title={formatDateTime(competitor.lastPolledAt)}
+                        >
                           {timeAgo(competitor.lastPolledAt)}
                         </time>
                       </span>
@@ -129,13 +134,25 @@ export function CompetitorList() {
                   </div>
                 </div>
                 <div className="row-actions">
-                  <Button size="sm" onClick={() => pollNow.mutate(competitor.id)} disabled={pollNow.isPending}>
+                  <Button
+                    size="sm"
+                    onClick={() => pollNow.mutate(competitor.id)}
+                    disabled={pollNow.isPending}
+                  >
                     Poll now
                   </Button>
-                  <Button size="sm" variant="danger" onClick={() => remove.mutate(competitor.id)} disabled={remove.isPending}>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => remove.mutate(competitor.id)}
+                    disabled={remove.isPending}
+                  >
                     Remove
                   </Button>
-                  <Link to={`/competitors/${encodeURIComponent(competitor.id)}`} className="btn btn-ghost btn-sm">
+                  <Link
+                    to={`/competitors/${encodeURIComponent(competitor.id)}`}
+                    className="btn btn-ghost btn-sm"
+                  >
                     Timeline →
                   </Link>
                 </div>

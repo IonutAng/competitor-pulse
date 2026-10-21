@@ -182,13 +182,22 @@ export class SnapshotRepo {
   async retrySummary(id: number): Promise<boolean> {
     const rows = await this.db
       .update(snapshots)
-      .set({ summaryStatus: 'pending', summaryAttempts: 0, summaryNextAttemptAt: sql`now()`, summaryError: null })
+      .set({
+        summaryStatus: 'pending',
+        summaryAttempts: 0,
+        summaryNextAttemptAt: sql`now()`,
+        summaryError: null,
+      })
       .where(and(eq(snapshots.id, id), eq(snapshots.summaryStatus, 'failed')))
       .returning({ id: snapshots.id });
     return rows.length > 0;
   }
 
   private fence(id: number, attempt: number) {
-    return and(eq(snapshots.id, id), eq(snapshots.summaryStatus, 'pending'), eq(snapshots.summaryAttempts, attempt));
+    return and(
+      eq(snapshots.id, id),
+      eq(snapshots.summaryStatus, 'pending'),
+      eq(snapshots.summaryAttempts, attempt),
+    );
   }
 }

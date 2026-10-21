@@ -30,17 +30,35 @@ describe('PollWorker', () => {
 
     const rows = await deps.snapshots.listByCompetitor('acme');
     expect(rows).toHaveLength(4);
-    const [s4, s3, s2, s1] = rows as [typeof rows[0], typeof rows[0], typeof rows[0], typeof rows[0]];
+    const [s4, s3, s2, s1] = rows;
 
-    expect(s1).toMatchObject({ previousSnapshotId: null, changed: false, changedFields: [], summaryStatus: 'none', summaryNextAttemptAt: null, price: '$29/mo' });
-    expect(s2).toMatchObject({ previousSnapshotId: s1.id, changed: true, changedFields: ['price'], summaryStatus: 'pending', price: '$39/mo' });
-    expect(s2.summaryNextAttemptAt).toBeInstanceOf(Date);
-    expect(s3).toMatchObject({ previousSnapshotId: s2.id, changed: false, summaryStatus: 'none' });
-    expect(s4).toMatchObject({ previousSnapshotId: s3.id, changed: true, changedFields: ['tagline', 'description'], summaryStatus: 'pending' });
+    expect(s1).toMatchObject({
+      previousSnapshotId: null,
+      changed: false,
+      changedFields: [],
+      summaryStatus: 'none',
+      summaryNextAttemptAt: null,
+      price: '$29/mo',
+    });
+    expect(s2).toMatchObject({
+      previousSnapshotId: s1!.id,
+      changed: true,
+      changedFields: ['price'],
+      summaryStatus: 'pending',
+      price: '$39/mo',
+    });
+    expect(s2!.summaryNextAttemptAt).toBeInstanceOf(Date);
+    expect(s3).toMatchObject({ previousSnapshotId: s2!.id, changed: false, summaryStatus: 'none' });
+    expect(s4).toMatchObject({
+      previousSnapshotId: s3!.id,
+      changed: true,
+      changedFields: ['tagline', 'description'],
+      summaryStatus: 'pending',
+    });
 
     // Newest first, and fetched_at never runs backwards along the chain.
-    expect(rows.map((r) => r.id)).toEqual([s4.id, s3.id, s2.id, s1.id]);
-    expect(s4.fetchedAt.getTime()).toBeGreaterThanOrEqual(s1.fetchedAt.getTime());
+    expect(rows.map((r) => r.id)).toEqual([s4!.id, s3!.id, s2!.id, s1!.id]);
+    expect(s4!.fetchedAt.getTime()).toBeGreaterThanOrEqual(s1!.fetchedAt.getTime());
   });
 
   it('treats whitespace-only differences as no change', async () => {
@@ -84,7 +102,9 @@ describe('PollWorker', () => {
   });
 
   it('tick() polls only what is due and says whether more may be waiting', async () => {
-    const { deps, worker: w } = worker(new FixtureListingSource(new Map([['acme', [v1, v2]]])), { POLL_BATCH_SIZE: '1' });
+    const { deps, worker: w } = worker(new FixtureListingSource(new Map([['acme', [v1, v2]]])), {
+      POLL_BATCH_SIZE: '1',
+    });
     await deps.competitors.insert('acme');
     await deps.competitors.insert('ghost');
 
@@ -105,7 +125,7 @@ describe('PollWorker', () => {
         await deps.competitors.delete(id);
         return v1;
       },
-    } as ListingSource);
+    });
     await deps.competitors.insert('acme');
     await expect(w.pollOne('acme')).resolves.toBeUndefined();
     expect(await deps.snapshots.listByCompetitor('acme')).toEqual([]);
@@ -118,10 +138,10 @@ describe('PollWorker', () => {
 
     const rows = await deps.snapshots.listByCompetitor('acme');
     expect(rows).toHaveLength(2);
-    const [second, first] = rows as [typeof rows[0], typeof rows[0]];
+    const [second, first] = rows;
     // Without the per-competitor lock both polls would read "no previous snapshot" and both be initial.
-    expect(first.previousSnapshotId).toBeNull();
-    expect(second.previousSnapshotId).toBe(first.id);
-    expect(second.changed).toBe(true);
+    expect(first!.previousSnapshotId).toBeNull();
+    expect(second!.previousSnapshotId).toBe(first!.id);
+    expect(second!.changed).toBe(true);
   });
 });

@@ -58,11 +58,15 @@ const enc = encodeURIComponent;
 
 export const api = {
   listCompetitors: () => request<Competitor[]>('/api/competitors'),
-  addCompetitor: (id: string) => request<Competitor>('/api/competitors', { method: 'POST', body: JSON.stringify({ id }) }),
+  addCompetitor: (id: string) =>
+    request<Competitor>('/api/competitors', { method: 'POST', body: JSON.stringify({ id }) }),
   removeCompetitor: (id: string) => request<void>(`/api/competitors/${enc(id)}`, { method: 'DELETE' }),
-  pollNow: (id: string) => request<{ id: string; nextPollAt: string }>(`/api/competitors/${enc(id)}/poll`, { method: 'POST' }),
+  pollNow: (id: string) =>
+    request<{ id: string; nextPollAt: string }>(`/api/competitors/${enc(id)}/poll`, { method: 'POST' }),
   retrySummary: (snapshotId: number) =>
-    request<{ id: number; summaryStatus: SummaryStatus }>(`/api/snapshots/${snapshotId}/retry-summary`, { method: 'POST' }),
+    request<{ id: number; summaryStatus: SummaryStatus }>(`/api/snapshots/${snapshotId}/retry-summary`, {
+      method: 'POST',
+    }),
   listSnapshots: (id: string, options: { limit?: number; before?: number } = {}) => {
     const query = new URLSearchParams();
     if (options.limit !== undefined) query.set('limit', String(options.limit));

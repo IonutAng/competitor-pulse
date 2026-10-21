@@ -36,7 +36,9 @@ describe('SummaryWorker', () => {
   }
 
   const makeDue = (id: number) =>
-    t.db.execute(sql`UPDATE snapshots SET summary_next_attempt_at = now() - interval '1 second' WHERE id = ${id}`);
+    t.db.execute(
+      sql`UPDATE snapshots SET summary_next_attempt_at = now() - interval '1 second' WHERE id = ${id}`,
+    );
 
   it('stores the summary and marks the job done', async () => {
     const summarizer = new FakeSummarizer(async () => 'Price rose from $29/mo to $39/mo.');
@@ -54,7 +56,11 @@ describe('SummaryWorker', () => {
       summaryError: null,
     });
     expect(summarizer.calls).toHaveLength(1);
-    expect(summarizer.calls[0]).toMatchObject({ previous: { price: '$29/mo' }, current: { price: '$39/mo' }, changedFields: ['price'] });
+    expect(summarizer.calls[0]).toMatchObject({
+      previous: { price: '$29/mo' },
+      current: { price: '$39/mo' },
+      changedFields: ['price'],
+    });
   });
 
   it('never calls the LLM for unchanged or initial snapshots', async () => {
@@ -96,7 +102,11 @@ describe('SummaryWorker', () => {
     // Once due, the retry succeeds.
     await makeDue(pending.id);
     await worker.tick();
-    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'done', summary: 'summary', summaryAttempts: 2 });
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({
+      summaryStatus: 'done',
+      summary: 'summary',
+      summaryAttempts: 2,
+    });
   });
 
   it('gives up after LLM_MAX_ATTEMPTS, keeping the snapshot', async () => {
@@ -111,7 +121,13 @@ describe('SummaryWorker', () => {
     await worker.tick();
 
     const failed = await deps.snapshots.getById(pending.id);
-    expect(failed).toMatchObject({ summaryStatus: 'failed', summary: null, summaryAttempts: 2, summaryNextAttemptAt: null, price: '$39/mo' });
+    expect(failed).toMatchObject({
+      summaryStatus: 'failed',
+      summary: null,
+      summaryAttempts: 2,
+      summaryNextAttemptAt: null,
+      price: '$39/mo',
+    });
     expect(failed!.summaryError).toMatch(/upstream timeout .*max attempts/);
     expect(summarizer.calls).toHaveLength(2);
 
@@ -126,8 +142,13 @@ describe('SummaryWorker', () => {
     const { deps, poll, worker } = setup(summarizer);
     const pending = await changedSnapshot(deps, poll);
     await worker.tick();
-    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'failed', summaryAttempts: 1 });
-    expect((await deps.snapshots.getById(pending.id))!.summaryError).toMatch(/Incorrect API key .*not retryable/);
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({
+      summaryStatus: 'failed',
+      summaryAttempts: 1,
+    });
+    expect((await deps.snapshots.getById(pending.id))!.summaryError).toMatch(
+      /Incorrect API key .*not retryable/,
+    );
   });
 
   it('reaps a job whose last attempt died mid-flight', async () => {
@@ -139,7 +160,10 @@ describe('SummaryWorker', () => {
       sql`UPDATE snapshots SET summary_attempts = 2, summary_next_attempt_at = now() - interval '1 second' WHERE id = ${pending.id}`,
     );
     await worker.tick();
-    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'failed', summaryError: 'gave up: all attempts used' });
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({
+      summaryStatus: 'failed',
+      summaryError: 'gave up: all attempts used',
+    });
     expect(summarizer.calls).toHaveLength(0);
   });
 
@@ -154,7 +178,10 @@ describe('SummaryWorker', () => {
     expect(await deps.snapshots.completeSummary(pending.id, 0, 'stale')).toBe(false);
     expect(await deps.snapshots.failSummary(pending.id, 0, 'stale', null)).toBe(false);
     expect(await deps.snapshots.completeSummary(pending.id, 1, 'fresh')).toBe(true);
-    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'done', summary: 'fresh' });
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({
+      summaryStatus: 'done',
+      summary: 'fresh',
+    });
   });
 
   it('survives the competitor being removed while the LLM is running', async () => {
@@ -193,14 +220,25 @@ describe('SummaryWorker', () => {
     const pending = await changedSnapshot(deps, poll);
 
     await worker.tick();
-    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'failed', summaryAttempts: 1 });
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({
+      summaryStatus: 'failed',
+      summaryAttempts: 1,
+    });
 
     expect(await deps.snapshots.retrySummary(pending.id)).toBe(true);
     expect(await deps.snapshots.retrySummary(pending.id)).toBe(false); // only failed jobs can be retried
-    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'pending', summaryAttempts: 0, summaryError: null });
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({
+      summaryStatus: 'pending',
+      summaryAttempts: 0,
+      summaryError: null,
+    });
 
     down = false;
     await worker.tick();
-    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'done', summary: 'recovered', summaryAttempts: 1 });
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({
+      summaryStatus: 'done',
+      summary: 'recovered',
+      summaryAttempts: 1,
+    });
   });
 });

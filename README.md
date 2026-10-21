@@ -22,11 +22,11 @@ version of the listing arrives every poll — 10 s by default — and each chang
 
 What that starts:
 
-| Service    | URL                     | Notes                                                        |
-|------------|-------------------------|--------------------------------------------------------------|
-| `app`      | <http://localhost:3000> | API + built frontend; applies migrations on startup          |
+| Service    | URL                     | Notes                                                         |
+| ---------- | ----------------------- | ------------------------------------------------------------- |
+| `app`      | <http://localhost:3000> | API + built frontend; applies migrations on startup           |
 | `mock-llm` | <http://localhost:4001> | the provided mock LLM server (`/control/*` endpoints exposed) |
-| `db`       | `localhost:5439`        | Postgres 16 (`app`/`app`, db `competitorpulse`)              |
+| `db`       | `localhost:5439`        | Postgres 16 (`app`/`app`, db `competitorpulse`)               |
 
 Override the poll interval or ports with `POLL_INTERVAL_MS=30000 APP_PORT=8080 POSTGRES_PORT=5440 docker compose up`.
 
@@ -54,12 +54,12 @@ pnpm --filter backend db:generate   # regenerate SQL migrations after editing sr
 
 ```
    React UI ──▶ Fastify API ──▶ Postgres ◀── poll worker ──▶ ListingSource (fixture stub)
-                                  ▲                               
+                                  ▲
                                   └── summary worker ──▶ LLM (mock / OpenAI / Ollama)
 ```
 
 1. `POST /api/competitors` inserts a row that is **due immediately** (`next_poll_at = now()`).
-2. The **poll worker** ticks every second. Each tick *claims* the competitors that are due with a
+2. The **poll worker** ticks every second. Each tick _claims_ the competitors that are due with a
    single `UPDATE … FROM (SELECT … FOR UPDATE SKIP LOCKED)` statement, which also schedules
    their next poll `POLL_INTERVAL_MS` from now. Claimed competitors are fetched from the
    `ListingSource` with bounded concurrency.
@@ -99,15 +99,18 @@ GET    /api/competitors/:id/snapshots        -> 200 [Snapshot, ...]   newest fir
 ```jsonc
 {
   "fetchedAt": "2026-10-21T06:21:44.123Z",
-  "title": "Acme CRM", "tagline": "…", "price": "$39/mo", "description": "…",
-  "changed": true,                 // false if identical to the previous snapshot
-  "summary": "Price rose …",       // null if unchanged, pending or failed
-  "id": 42,                        // ordering key; also the keyset cursor
-  "isInitial": false,              // first snapshot of this competitor (nothing to compare against)
-  "previousSnapshotId": 41,        // the snapshot this one was diffed against; null for the first
-  "changedFields": ["price"],      // computed in code, in a fixed order
-  "summaryStatus": "done",         // none | pending | done | failed
-  "summaryError": null             // last LLM error, if any
+  "title": "Acme CRM",
+  "tagline": "…",
+  "price": "$39/mo",
+  "description": "…",
+  "changed": true, // false if identical to the previous snapshot
+  "summary": "Price rose …", // null if unchanged, pending or failed
+  "id": 42, // ordering key; also the keyset cursor
+  "isInitial": false, // first snapshot of this competitor (nothing to compare against)
+  "previousSnapshotId": 41, // the snapshot this one was diffed against; null for the first
+  "changedFields": ["price"], // computed in code, in a fixed order
+  "summaryStatus": "done", // none | pending | done | failed
+  "summaryError": null, // last LLM error, if any
 }
 ```
 
@@ -128,45 +131,45 @@ Every error is `{ "error": { "code", "message" } }`. Competitor ids are lowercas
 All settings are environment variables, validated with zod at startup
 (`backend/src/config.ts`; `backend/.env.example` documents them).
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `DATABASE_URL` | — | Postgres connection string |
-| `POLL_INTERVAL_MS` | `10000` | how often each competitor is polled (production: `900000` = 15 min) |
-| `SCHEDULER_TICK_MS` | `1000` | how often the poll worker looks for due competitors |
-| `POLL_BATCH_SIZE` / `POLL_CONCURRENCY` | `10` / `5` | competitors claimed per tick / fetched in parallel |
-| `SOURCE_TIMEOUT_MS` | `10000` | timeout for one listing fetch |
-| `SUMMARY_TICK_MS` / `SUMMARY_CONCURRENCY` | `1000` / `3` | summary worker cadence / parallel LLM calls |
-| `SUMMARY_BACKOFF_BASE_MS` / `SUMMARY_BACKOFF_MAX_MS` | `2000` / `60000` | retry backoff `base × 2^(attempt−1)`, capped — demo values; production `10000` / `600000` with `LLM_MAX_ATTEMPTS=5` |
-| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | mock server | see below |
-| `LLM_TIMEOUT_MS` / `LLM_MAX_ATTEMPTS` | `15000` / `3` | per-call timeout / attempts before a summary is marked failed |
-| `WORKERS_ENABLED` | `true` | `false` runs an API-only instance |
-| `PORT` / `HOST` / `LOG_LEVEL` | `3000` / `0.0.0.0` / `info` | |
-| `STATIC_DIR` | unset | directory of the built frontend to serve (set in the Docker image) |
+| Variable                                             | Default                     | Meaning                                                                                                             |
+| ---------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                                       | —                           | Postgres connection string                                                                                          |
+| `POLL_INTERVAL_MS`                                   | `10000`                     | how often each competitor is polled (production: `900000` = 15 min)                                                 |
+| `SCHEDULER_TICK_MS`                                  | `1000`                      | how often the poll worker looks for due competitors                                                                 |
+| `POLL_BATCH_SIZE` / `POLL_CONCURRENCY`               | `10` / `5`                  | competitors claimed per tick / fetched in parallel                                                                  |
+| `SOURCE_TIMEOUT_MS`                                  | `10000`                     | timeout for one listing fetch                                                                                       |
+| `SUMMARY_TICK_MS` / `SUMMARY_CONCURRENCY`            | `1000` / `3`                | summary worker cadence / parallel LLM calls                                                                         |
+| `SUMMARY_BACKOFF_BASE_MS` / `SUMMARY_BACKOFF_MAX_MS` | `2000` / `60000`            | retry backoff `base × 2^(attempt−1)`, capped — demo values; production `10000` / `600000` with `LLM_MAX_ATTEMPTS=5` |
+| `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`         | mock server                 | see below                                                                                                           |
+| `LLM_TIMEOUT_MS` / `LLM_MAX_ATTEMPTS`                | `15000` / `3`               | per-call timeout / attempts before a summary is marked failed                                                       |
+| `WORKERS_ENABLED`                                    | `true`                      | `false` runs an API-only instance                                                                                   |
+| `PORT` / `HOST` / `LOG_LEVEL`                        | `3000` / `0.0.0.0` / `info` |                                                                                                                     |
+| `STATIC_DIR`                                         | unset                       | directory of the built frontend to serve (set in the Docker image)                                                  |
 
 ### Which LLM
 
-| Option | `LLM_BASE_URL` | `LLM_API_KEY` | `LLM_MODEL` |
-|---|---|---|---|
-| **Mock server (default)** — `python3 mock-llm/mock-llm-server.py` or the compose service | `http://localhost:4001/v1` | `mock` | `mock-llm` |
-| OpenAI | `https://api.openai.com/v1` | your key | e.g. `gpt-4o-mini` |
-| Ollama | `http://localhost:11434/v1` | `ollama` | e.g. `llama3.2` |
+| Option                                                                                   | `LLM_BASE_URL`              | `LLM_API_KEY` | `LLM_MODEL`        |
+| ---------------------------------------------------------------------------------------- | --------------------------- | ------------- | ------------------ |
+| **Mock server (default)** — `python3 mock-llm/mock-llm-server.py` or the compose service | `http://localhost:4001/v1`  | `mock`        | `mock-llm`         |
+| OpenAI                                                                                   | `https://api.openai.com/v1` | your key      | e.g. `gpt-4o-mini` |
+| Ollama                                                                                   | `http://localhost:11434/v1` | `ollama`      | e.g. `llama3.2`    |
 
 One client (`backend/src/llm/summarizer.ts`, the official `openai` SDK with a custom base URL)
 covers all three. The mock does not summarize: it echoes the first 160 characters of what it was
-sent, which is why the prompt *starts* with the computed diff (`price: "$29/mo" -> "$39/mo"`) —
+sent, which is why the prompt _starts_ with the computed diff (`price: "$29/mo" -> "$39/mo"`) —
 the echo stays readable, and with a real model the diff is what it should phrase.
 
 ## Design decisions
 
 - **Scheduling lives in the database.** `competitors.next_poll_at` plus one atomic claim
   statement gives per-competitor intervals, natural spreading of load, no catch-up storm after
-  downtime (next poll is always scheduled from *now*), and horizontal scaling for free: several
+  downtime (next poll is always scheduled from _now_), and horizontal scaling for free: several
   instances can run the worker and `SKIP LOCKED` guarantees no competitor is claimed twice.
   A boot-time clamp pulls far-future rows in when `POLL_INTERVAL_MS` is lowered.
 - **Polling is at-most-once per interval; summaries are at-least-once.** If the process dies
   between claim and insert, that poll is skipped and the next one still detects the change
   (polling samples a level, nothing is lost). A summary is an event that must not be dropped,
-  so its job survives crashes (the queue *is* the table), is retried with backoff, and every
+  so its job survives crashes (the queue _is_ the table), is retried with backoff, and every
   completion or failure write is **fenced** on the attempt number so a worker that lost its
   lease cannot overwrite a newer claim.
 - **Diffing is deterministic and happens before the LLM.** Snapshots are compared by a content
@@ -280,7 +283,7 @@ How the pieces fit:
   built frontend in one container. It applies migrations on start and owns the public domain.
 - **mock-llm** has no public domain. The app reaches it over Railway's private network at
   `http://mock-llm.railway.internal:4001` — plain HTTP, service name as hostname.
-- **Postgres** is Railway's managed database. `DATABASE_URL` is a *reference variable* to its
+- **Postgres** is Railway's managed database. `DATABASE_URL` is a _reference variable_ to its
   private connection string, so no credentials are copied anywhere.
 - `HOST=::` makes the app listen on IPv6 as well as IPv4 (Railway's private network is IPv6-first).
 - The retry budget is production-sized here (`10 s → 20 s → 40 s → 80 s`, five attempts) rather than

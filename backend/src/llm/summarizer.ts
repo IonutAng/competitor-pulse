@@ -5,7 +5,12 @@ import { buildMessages, extractSummary } from './prompt.js';
 
 export interface Summarizer {
   /** Explains, in plain English, how `current` differs from `previous`. Throws on any failure. */
-  summarize(previous: Listing, current: Listing, changedFields: ListingField[], signal?: AbortSignal): Promise<string>;
+  summarize(
+    previous: Listing,
+    current: Listing,
+    changedFields: ListingField[],
+    signal?: AbortSignal,
+  ): Promise<string>;
 }
 
 export interface OpenAiCompatibleOptions {
@@ -33,7 +38,12 @@ export class OpenAiCompatibleSummarizer implements Summarizer {
     });
   }
 
-  async summarize(previous: Listing, current: Listing, changedFields: ListingField[], signal?: AbortSignal): Promise<string> {
+  async summarize(
+    previous: Listing,
+    current: Listing,
+    changedFields: ListingField[],
+    signal?: AbortSignal,
+  ): Promise<string> {
     const completion = await this.client.chat.completions.create(
       { model: this.options.model, messages: buildMessages(previous, current, changedFields) },
       { signal },

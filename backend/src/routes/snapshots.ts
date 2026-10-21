@@ -29,6 +29,7 @@ export function toSnapshotDto(row: SnapshotRow) {
     summaryError: row.summaryError,
   };
 }
+export type SnapshotDto = ReturnType<typeof toSnapshotDto>;
 
 export const snapshotRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { competitors, snapshots }) => {
   app.get(
@@ -64,7 +65,11 @@ export const snapshotRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { comp
       if (!(await snapshots.retrySummary(id))) {
         const snapshot = await snapshots.getById(id);
         if (!snapshot) throw new HttpError(404, 'not_found', `Snapshot ${id} not found`);
-        throw new HttpError(409, 'not_failed', `Snapshot ${id} has no failed summary to retry (status: ${snapshot.summaryStatus})`);
+        throw new HttpError(
+          409,
+          'not_failed',
+          `Snapshot ${id} has no failed summary to retry (status: ${snapshot.summaryStatus})`,
+        );
       }
       return reply.status(202).send({ id, summaryStatus: 'pending' });
     },

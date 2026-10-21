@@ -2,7 +2,15 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 export type Tone = 'neutral' | 'accent' | 'ok' | 'warn' | 'danger';
 
-export function Chip({ tone = 'neutral', title, children }: { tone?: Tone; title?: string; children: ReactNode }) {
+export function Chip({
+  tone = 'neutral',
+  title,
+  children,
+}: {
+  tone?: Tone;
+  title?: string;
+  children: ReactNode;
+}) {
   return (
     <span className={`chip chip-${tone}`} title={title}>
       {children}
@@ -15,8 +23,16 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: 'sm' | 'md';
 };
 
-export function Button({ variant = 'secondary', size = 'md', className = '', type = 'button', ...rest }: ButtonProps) {
-  const classes = ['btn', `btn-${variant}`, size === 'sm' ? 'btn-sm' : '', className].filter(Boolean).join(' ');
+export function Button({
+  variant = 'secondary',
+  size = 'md',
+  className = '',
+  type = 'button',
+  ...rest
+}: ButtonProps) {
+  const classes = ['btn', `btn-${variant}`, size === 'sm' ? 'btn-sm' : '', className]
+    .filter(Boolean)
+    .join(' ');
   return <button type={type} className={classes} {...rest} />;
 }
 

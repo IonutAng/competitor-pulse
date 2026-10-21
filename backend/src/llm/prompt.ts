@@ -35,7 +35,10 @@ function clipListing(listing: Listing): Listing {
 export function buildMessages(previous: Listing, current: Listing, fields: ListingField[]): ChatMessage[] {
   const diffLines =
     fields.length > 0
-      ? fields.map((field) => `${field}: ${JSON.stringify(clip(previous[field]))} -> ${JSON.stringify(clip(current[field]))}`)
+      ? fields.map(
+          (field) =>
+            `${field}: ${JSON.stringify(clip(previous[field]))} -> ${JSON.stringify(clip(current[field]))}`,
+        )
       : ['(none)'];
   const user = [
     'Changed fields:',

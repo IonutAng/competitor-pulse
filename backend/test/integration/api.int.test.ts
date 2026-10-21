@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { CompetitorDto } from '../../src/routes/competitors.js';
 import { buildTestApp, testDeps } from '../helpers/app.js';
 import { setupTestDb, type TestDb } from '../helpers/db.js';
 
@@ -18,10 +19,14 @@ describe('competitors API', () => {
   });
 
   it('adds, lists and removes a competitor (the contract)', async () => {
-    const created = await app.inject({ method: 'POST', url: '/api/competitors', payload: { id: 'acme-crm' } });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/competitors',
+      payload: { id: 'acme-crm' },
+    });
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({ id: 'acme-crm', lastPolledAt: null, lastError: null });
-    expect(created.json().createdAt).toMatch(/Z$/);
+    expect(created.json<CompetitorDto>().createdAt).toMatch(/Z$/);
 
     const listed = await app.inject({ method: 'GET', url: '/api/competitors' });
     expect(listed.statusCode).toBe(200);
@@ -39,7 +44,7 @@ describe('competitors API', () => {
     await app.inject({ method: 'POST', url: '/api/competitors', payload: { id: 'north-analytics' } });
     await app.inject({ method: 'POST', url: '/api/competitors', payload: { id: 'acme-crm' } });
     const listed = await app.inject({ method: 'GET', url: '/api/competitors' });
-    expect(listed.json().map((c: { id: string }) => c.id)).toEqual(['north-analytics', 'acme-crm']);
+    expect(listed.json<CompetitorDto[]>().map((c) => c.id)).toEqual(['north-analytics', 'acme-crm']);
   });
 
   it('answers 409 when the competitor is already tracked', async () => {

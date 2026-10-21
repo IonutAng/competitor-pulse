@@ -24,14 +24,19 @@ export function CompetitorTimeline() {
     queryKey: ['snapshots', id],
     queryFn: ({ pageParam }) => api.listSnapshots(id, { limit: PAGE_SIZE, before: pageParam }),
     initialPageParam: undefined as number | undefined,
-    getNextPageParam: (lastPage) => (lastPage.length === PAGE_SIZE ? lastPage[lastPage.length - 1]?.id : undefined),
+    getNextPageParam: (lastPage) =>
+      lastPage.length === PAGE_SIZE ? lastPage[lastPage.length - 1]?.id : undefined,
     // Pending summaries fill in without a reload.
     refetchInterval: 3000,
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
   });
 
   // The list endpoint carries the competitor's fetch status; reuse its cache.
-  const competitors = useQuery({ queryKey: ['competitors'], queryFn: api.listCompetitors, refetchInterval: 5000 });
+  const competitors = useQuery({
+    queryKey: ['competitors'],
+    queryFn: api.listCompetitors,
+    refetchInterval: 5000,
+  });
   const competitor = competitors.data?.find((c) => c.id === id);
 
   const pollNow = useMutation({ mutationFn: api.pollNow });
@@ -74,8 +79,14 @@ export function CompetitorTimeline() {
         <Button variant="primary" size="sm" onClick={() => pollNow.mutate(id)} disabled={pollNow.isPending}>
           Poll now
         </Button>
-        {pollNow.isSuccess && <span className="muted small">queued — the next snapshot appears within a few seconds</span>}
-        {pollNow.isError && <span className="small" style={{ color: 'var(--danger)' }}>{errorText(pollNow.error)}</span>}
+        {pollNow.isSuccess && (
+          <span className="muted small">queued — the next snapshot appears within a few seconds</span>
+        )}
+        {pollNow.isError && (
+          <span className="small" style={{ color: 'var(--danger)' }}>
+            {errorText(pollNow.error)}
+          </span>
+        )}
       </div>
       {competitor?.lastError && (
         <Notice>
@@ -108,7 +119,9 @@ export function CompetitorTimeline() {
                 <SnapshotCard
                   snapshot={snapshot}
                   state={state}
-                  previous={snapshot.previousSnapshotId === null ? undefined : byId.get(snapshot.previousSnapshotId)}
+                  previous={
+                    snapshot.previousSnapshotId === null ? undefined : byId.get(snapshot.previousSnapshotId)
+                  }
                   onRetry={() => retrySummary.mutate(snapshot.id)}
                   retrying={retrySummary.isPending && retrySummary.variables === snapshot.id}
                 />
@@ -173,7 +186,10 @@ function SnapshotCard({
       <dl className={`fields${state === 'unchanged' ? ' fields-compact' : ''}`}>
         {LISTING_FIELDS.map((field) => (
           // The diff above already points at what changed; highlight rows only when it could not be shown.
-          <div key={field} className={!showDiff && snapshot.changedFields.includes(field) ? 'changed' : undefined}>
+          <div
+            key={field}
+            className={!showDiff && snapshot.changedFields.includes(field) ? 'changed' : undefined}
+          >
             <dt>{field}</dt>
             <dd>{snapshot[field]}</dd>
           </div>

@@ -10,7 +10,10 @@ export const COMPETITOR_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const newCompetitorBody = z.object({
   id: z
     .string()
-    .regex(COMPETITOR_ID_PATTERN, 'id must be a lowercase slug such as "acme-crm" (letters, digits, hyphens; max 63 chars)'),
+    .regex(
+      COMPETITOR_ID_PATTERN,
+      'id must be a lowercase slug such as "acme-crm" (letters, digits, hyphens; max 63 chars)',
+    ),
 });
 
 // Lookups by id do not validate the format: an id that cannot exist is simply not found.
@@ -24,6 +27,7 @@ export function toCompetitorDto(row: CompetitorRow) {
     lastError: row.lastError,
   };
 }
+export type CompetitorDto = ReturnType<typeof toCompetitorDto>;
 
 export const competitorRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { competitors, source }) => {
   app.get('/api/competitors', async () => {

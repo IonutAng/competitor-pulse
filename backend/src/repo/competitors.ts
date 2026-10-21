@@ -22,7 +22,10 @@ export class CompetitorRepo {
 
   /** Stops tracking a competitor; its snapshots go with it (ON DELETE CASCADE). Returns whether it existed. */
   async delete(id: string): Promise<boolean> {
-    const rows = await this.db.delete(competitors).where(eq(competitors.id, id)).returning({ id: competitors.id });
+    const rows = await this.db
+      .delete(competitors)
+      .where(eq(competitors.id, id))
+      .returning({ id: competitors.id });
     return rows.length > 0;
   }
 
