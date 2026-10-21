@@ -7,15 +7,12 @@ import {
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
-import type { Config } from './config.js';
-import type { Db } from './db/index.js';
+import type { Deps } from './deps.js';
 import { HttpError } from './http-error.js';
+import { competitorRoutes } from './routes/competitors.js';
 import { healthRoutes } from './routes/health.js';
 
-export interface AppDeps {
-  config: Config;
-  db: Db;
-}
+export type AppDeps = Deps;
 
 export function buildApp(deps: AppDeps, serverOptions: FastifyServerOptions = {}) {
   const app = Fastify(serverOptions).withTypeProvider<ZodTypeProvider>();
@@ -65,6 +62,7 @@ export function buildApp(deps: AppDeps, serverOptions: FastifyServerOptions = {}
   });
 
   app.register(healthRoutes, deps);
+  app.register(competitorRoutes, deps);
 
   return app;
 }

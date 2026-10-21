@@ -1,6 +1,7 @@
 import { buildApp } from './app.js';
 import { loadConfig, type Config } from './config.js';
 import { createDb, runMigrations } from './db/index.js';
+import { buildDeps } from './deps.js';
 
 function loggerOptions(config: Config) {
   if (config.NODE_ENV === 'development') {
@@ -14,7 +15,8 @@ function loggerOptions(config: Config) {
 
 const config = loadConfig();
 const { pool, db } = createDb(config.DATABASE_URL, config.PG_POOL_MAX);
-const app = buildApp({ config, db }, { logger: loggerOptions(config) });
+const deps = buildDeps(config, db);
+const app = buildApp(deps, { logger: loggerOptions(config) });
 
 try {
   await runMigrations(db);
