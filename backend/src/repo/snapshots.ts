@@ -174,6 +174,20 @@ export class SnapshotRepo {
     return rows.length > 0;
   }
 
+  /**
+   * Puts a failed summary back in the queue for a fresh round of attempts (the recovery path
+   * after an LLM outage longer than the retry budget). Returns false unless the snapshot
+   * exists and is currently failed.
+   */
+  async retrySummary(id: number): Promise<boolean> {
+    const rows = await this.db
+      .update(snapshots)
+      .set({ summaryStatus: 'pending', summaryAttempts: 0, summaryNextAttemptAt: sql`now()`, summaryError: null })
+      .where(and(eq(snapshots.id, id), eq(snapshots.summaryStatus, 'failed')))
+      .returning({ id: snapshots.id });
+    return rows.length > 0;
+  }
+
   private fence(id: number, attempt: number) {
     return and(eq(snapshots.id, id), eq(snapshots.summaryStatus, 'pending'), eq(snapshots.summaryAttempts, attempt));
   }

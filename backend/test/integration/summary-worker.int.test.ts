@@ -182,4 +182,25 @@ describe('SummaryWorker', () => {
     expect(await worker.tick()).toBe(false);
     expect(summarizer.calls).toHaveLength(2);
   });
+
+  it('retrySummary puts a failed job back in the queue for a fresh round of attempts', async () => {
+    let down = true;
+    const summarizer = new FakeSummarizer(async () => {
+      if (down) throw httpError(503, 'LLM down');
+      return 'recovered';
+    });
+    const { deps, poll, worker } = setup(summarizer, { LLM_MAX_ATTEMPTS: '1' });
+    const pending = await changedSnapshot(deps, poll);
+
+    await worker.tick();
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'failed', summaryAttempts: 1 });
+
+    expect(await deps.snapshots.retrySummary(pending.id)).toBe(true);
+    expect(await deps.snapshots.retrySummary(pending.id)).toBe(false); // only failed jobs can be retried
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'pending', summaryAttempts: 0, summaryError: null });
+
+    down = false;
+    await worker.tick();
+    expect(await deps.snapshots.getById(pending.id)).toMatchObject({ summaryStatus: 'done', summary: 'recovered', summaryAttempts: 1 });
+  });
 });

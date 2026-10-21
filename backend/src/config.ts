@@ -29,6 +29,10 @@ const envSchema = z.object({
 
   SUMMARY_TICK_MS: z.coerce.number().int().min(100).default(1000),
   SUMMARY_CONCURRENCY: positiveInt(3),
+  // Backoff between LLM attempts: base × 2^(attempt−1), capped. Demo-friendly defaults; a
+  // production deployment would use something like 10000 / 600000 with LLM_MAX_ATTEMPTS=5.
+  SUMMARY_BACKOFF_BASE_MS: positiveInt(2000),
+  SUMMARY_BACKOFF_MAX_MS: positiveInt(60_000),
   LLM_BASE_URL: z.url().default('http://localhost:4001/v1'),
   LLM_API_KEY: z.string().default('mock'),
   LLM_MODEL: z.string().default('mock-llm'),

@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { ApiError, LISTING_FIELDS, api, errorText, type Snapshot } from '../api';
 import { formatDateTime, timeAgo } from '../time';
@@ -23,6 +23,12 @@ export function CompetitorTimeline() {
   const competitor = competitors.data?.find((c) => c.id === id);
 
   const pollNow = useMutation({ mutationFn: api.pollNow });
+
+  const queryClient = useQueryClient();
+  const retrySummary = useMutation({
+    mutationFn: api.retrySummary,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['snapshots', id] }),
+  });
 
   if (timeline.isError && timeline.error instanceof ApiError && timeline.error.status === 404) {
     return (
@@ -64,7 +70,11 @@ export function CompetitorTimeline() {
         <ol className="timeline">
           {snapshots.map((snapshot) => (
             <li key={snapshot.id}>
-              <SnapshotCard snapshot={snapshot} />
+              <SnapshotCard
+                snapshot={snapshot}
+                onRetry={() => retrySummary.mutate(snapshot.id)}
+                retrying={retrySummary.isPending && retrySummary.variables === snapshot.id}
+              />
             </li>
           ))}
         </ol>
@@ -79,7 +89,7 @@ export function CompetitorTimeline() {
   );
 }
 
-function SnapshotCard({ snapshot }: { snapshot: Snapshot }) {
+function SnapshotCard({ snapshot, onRetry, retrying }: { snapshot: Snapshot; onRetry: () => void; retrying: boolean }) {
   return (
     <article className={`snapshot${snapshot.changed ? ' snapshot-changed' : ''}`}>
       <header>
@@ -99,8 +109,13 @@ function SnapshotCard({ snapshot }: { snapshot: Snapshot }) {
         </tbody>
       </table>
       {snapshot.summaryStatus === 'done' && snapshot.summary && <p className="summary">{snapshot.summary}</p>}
-      {snapshot.summaryStatus === 'failed' && snapshot.summaryError && (
-        <p className="error">Summary failed: {snapshot.summaryError}</p>
+      {snapshot.summaryStatus === 'failed' && (
+        <p className="error">
+          Summary failed: {snapshot.summaryError ?? 'unknown error'}{' '}
+          <button type="button" onClick={onRetry} disabled={retrying}>
+            Retry summary
+          </button>
+        </p>
       )}
     </article>
   );

@@ -86,7 +86,10 @@ export class SummaryWorker {
       else log.warn('summary discarded: the job was re-claimed or removed while the LLM was running');
     } catch (err) {
       const message = describeLlmError(err, config.LLM_TIMEOUT_MS);
-      const decision = decideRetry(attempt, config.LLM_MAX_ATTEMPTS, err);
+      const decision = decideRetry(attempt, config.LLM_MAX_ATTEMPTS, err, {
+        baseDelayMs: config.SUMMARY_BACKOFF_BASE_MS,
+        maxDelayMs: config.SUMMARY_BACKOFF_MAX_MS,
+      });
       if (decision.outcome === 'retry') {
         await snapshots.failSummary(id, attempt, message, decision.delayMs);
         log.warn({ err, retryInMs: decision.delayMs }, 'summary attempt failed; will retry');

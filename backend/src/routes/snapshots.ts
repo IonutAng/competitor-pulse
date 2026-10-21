@@ -52,4 +52,20 @@ export const snapshotRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { comp
     }
     return reply.status(202).send({ id, nextPollAt: nextPollAt.toISOString() });
   });
+
+  // Recovery path for a summary that exhausted its attempts (e.g. the LLM was down for longer
+  // than the retry budget): back to the queue with a fresh attempt counter.
+  app.post(
+    '/api/snapshots/:id/retry-summary',
+    { schema: { params: z.object({ id: z.coerce.number().int().positive() }) } },
+    async (request, reply) => {
+      const { id } = request.params;
+      if (!(await snapshots.retrySummary(id))) {
+        const snapshot = await snapshots.getById(id);
+        if (!snapshot) throw new HttpError(404, 'not_found', `Snapshot ${id} not found`);
+        throw new HttpError(409, 'not_failed', `Snapshot ${id} has no failed summary to retry (status: ${snapshot.summaryStatus})`);
+      }
+      return reply.status(202).send({ id, summaryStatus: 'pending' });
+    },
+  );
 };

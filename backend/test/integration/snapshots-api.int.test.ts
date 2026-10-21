@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Deps } from '../../src/deps.js';
 import { FixtureListingSource } from '../../src/source/fixture-source.js';
@@ -102,5 +103,27 @@ describe('snapshots API', () => {
     const body = (await app.inject({ method: 'GET', url: '/api/competitors/acme-crm/snapshots' })).json();
     expect(body).toHaveLength(1);
     expect(body[0]).toMatchObject({ price: v1.price, isInitial: true });
+  });
+
+  it('POST /api/snapshots/:id/retry-summary re-queues a failed summary only', async () => {
+    await app.inject({ method: 'POST', url: '/api/competitors', payload: { id: 'acme-crm' } });
+    await pollTimes(2);
+    const [changed] = (await app.inject({ method: 'GET', url: '/api/competitors/acme-crm/snapshots' })).json();
+    expect(changed.summaryStatus).toBe('pending');
+
+    const notFailed = await app.inject({ method: 'POST', url: `/api/snapshots/${changed.id}/retry-summary` });
+    expect(notFailed.statusCode).toBe(409);
+
+    await t.db.execute(
+      sql`UPDATE snapshots SET summary_status = 'failed', summary_next_attempt_at = NULL, summary_attempts = 3, summary_error = 'boom' WHERE id = ${changed.id}`,
+    );
+    const retried = await app.inject({ method: 'POST', url: `/api/snapshots/${changed.id}/retry-summary` });
+    expect(retried.statusCode).toBe(202);
+    expect(retried.json()).toEqual({ id: changed.id, summaryStatus: 'pending' });
+    const [after] = (await app.inject({ method: 'GET', url: '/api/competitors/acme-crm/snapshots' })).json();
+    expect(after).toMatchObject({ summaryStatus: 'pending', summaryError: null });
+
+    expect((await app.inject({ method: 'POST', url: '/api/snapshots/999999/retry-summary' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/api/snapshots/abc/retry-summary' })).statusCode).toBe(400);
   });
 });

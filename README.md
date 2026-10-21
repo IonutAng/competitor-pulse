@@ -7,7 +7,7 @@ what changed between consecutive snapshots.
 - **Frontend:** React 19, Vite, TanStack Query, React Router
 - **LLM:** the provided mock server by default; OpenAI or Ollama by changing three env vars
 - **Packaging:** pnpm workspace, one Dockerfile, `docker compose up` for the whole system
-- **Live instance:** _see [Deployment](#deployment)_
+- **Live instance:** <https://app-production-0c64.up.railway.app> (see [Deployment](#deployment))
 
 ## Quick start (one command)
 
@@ -115,6 +115,7 @@ Extras:
 ```
 GET    /api/competitors/:id/snapshots?limit=50&before=<id>   keyset pagination (no limit by default)
 POST   /api/competitors/:id/poll             -> 202 { id, nextPollAt }   "Poll now"
+POST   /api/snapshots/:id/retry-summary      -> 202 { id, summaryStatus }   re-queue a failed summary · 404 · 409 if not failed
 GET    /health                               -> 200 { status, db, workers } · 503 if the DB is unreachable
 ```
 
@@ -134,6 +135,7 @@ All settings are environment variables, validated with zod at startup
 | `POLL_BATCH_SIZE` / `POLL_CONCURRENCY` | `10` / `5` | competitors claimed per tick / fetched in parallel |
 | `SOURCE_TIMEOUT_MS` | `10000` | timeout for one listing fetch |
 | `SUMMARY_TICK_MS` / `SUMMARY_CONCURRENCY` | `1000` / `3` | summary worker cadence / parallel LLM calls |
+| `SUMMARY_BACKOFF_BASE_MS` / `SUMMARY_BACKOFF_MAX_MS` | `2000` / `60000` | retry backoff `base × 2^(attempt−1)`, capped — demo values; production `10000` / `600000` with `LLM_MAX_ATTEMPTS=5` |
 | `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` | mock server | see below |
 | `LLM_TIMEOUT_MS` / `LLM_MAX_ATTEMPTS` | `15000` / `3` | per-call timeout / attempts before a summary is marked failed |
 | `WORKERS_ENABLED` | `true` | `false` runs an API-only instance |
@@ -209,6 +211,7 @@ scripts/demo.sh reset                     # (the mock counts a timed-out call on
 ```
 
 Other things worth showing: `POST /api/competitors/acme-crm/poll` ("Poll now" in the UI);
+the "Retry summary" button on a failed snapshot (re-queues it with a fresh attempt budget);
 killing the app while a summary is pending and restarting it — the summary still arrives;
 removing a competitor while its summary is in flight — nothing crashes.
 
@@ -245,7 +248,52 @@ calls the LLM for unchanged or initial snapshots.
 
 ## Deployment
 
-_To be completed: the service is deployed on Railway (app + Postgres + mock LLM over private networking)._
+Live at **<https://app-production-0c64.up.railway.app>**. It runs a single replica with a 5-minute
+poll interval, so use **Poll now** to advance a competitor's listing instantly when trying it out.
+
+It is deployed on [Railway](https://railway.com) as one project with three services, created and
+deployed entirely from the CLI:
+
+```sh
+npm i -g @railway/cli && railway login
+railway init --name competitor-pulse
+railway add --database postgres                              # managed Postgres, service "Postgres"
+railway add --service mock-llm --variables PORT=4001
+railway add --service app \
+  --variables LLM_BASE_URL=http://mock-llm.railway.internal:4001/v1 \
+  --variables LLM_API_KEY=mock --variables LLM_MODEL=mock-llm \
+  --variables POLL_INTERVAL_MS=300000 --variables PORT=3000 --variables HOST=:: \
+  --variables SUMMARY_BACKOFF_BASE_MS=10000 --variables LLM_MAX_ATTEMPTS=5
+railway variable set 'DATABASE_URL=${{Postgres.DATABASE_URL}}' --service app
+railway up --service app --detach                            # uploads the repo, builds the root Dockerfile
+(cd mock-llm && railway link -s mock-llm && railway up --detach)   # uploads only mock-llm/, builds its Dockerfile
+railway domain --service app --port 3000
+```
+
+`railway up` uploads the directory it runs in, so the mock LLM is deployed from inside
+`mock-llm/` (linked to its own service) to keep its Dockerfile at the root of the upload.
+
+How the pieces fit:
+
+- **app** is the same image `docker compose` builds (root `Dockerfile`): API, workers and the
+  built frontend in one container. It applies migrations on start and owns the public domain.
+- **mock-llm** has no public domain. The app reaches it over Railway's private network at
+  `http://mock-llm.railway.internal:4001` — plain HTTP, service name as hostname.
+- **Postgres** is Railway's managed database. `DATABASE_URL` is a *reference variable* to its
+  private connection string, so no credentials are copied anywhere.
+- `HOST=::` makes the app listen on IPv6 as well as IPv4 (Railway's private network is IPv6-first).
+- The retry budget is production-sized here (`10 s → 20 s → 40 s → 80 s`, five attempts) rather than
+  the demo defaults. Lesson from the first deploy: the app came up two minutes before the mock LLM,
+  and with the 2 s/4 s demo backoff the summaries queued in that window burned all three attempts
+  in six seconds. Snapshots were intact, as designed, and the "Retry summary" button exists for
+  exactly that case — but a dependency outage should be survivable without a human.
+- Redeploy with `railway up` again, or connect the GitHub repo in the dashboard for
+  push-to-deploy. Switching to a real LLM is three variables:
+  `railway variable set LLM_BASE_URL=… LLM_API_KEY=… LLM_MODEL=… --service app`.
+
+Known limits of this deployment: one replica (the fixture stub's cursor is per process, and
+startup migrations are not replica-safe — a release step is the production answer), and no
+retention, so a tracked competitor adds one row every five minutes forever.
 
 ## AI tools used
 
