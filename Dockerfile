@@ -8,7 +8,7 @@ WORKDIR /app
 
 # All workspace dependencies, dev ones included (tsc and vite run in the build stage).
 FROM base AS deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
 RUN pnpm install --frozen-lockfile
@@ -22,7 +22,7 @@ RUN pnpm --filter frontend build && pnpm --filter backend build
 # A separate, clean install of the backend's production dependencies only (the frontend ships
 # as static files and needs nothing at runtime).
 FROM base AS prod-deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY backend/package.json backend/
 COPY frontend/package.json frontend/
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter backend
