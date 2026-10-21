@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Deps } from '../../src/deps.js';
-import type { SnapshotDto } from '../../src/routes/snapshots.js';
+import type { SnapshotDto } from '../../src/routes/schemas.js';
 import { FixtureListingSource } from '../../src/source/fixture-source.js';
 import { PollWorker } from '../../src/workers/poll-worker.js';
 import { buildTestApp, testDeps } from '../helpers/app.js';
@@ -17,7 +17,7 @@ describe('snapshots API', () => {
   beforeAll(async () => {
     t = await setupTestDb();
     source = new FixtureListingSource(new Map([['acme-crm', [v1, v2, v3]]]));
-    deps = testDeps(t.db, {}, { source });
+    deps = testDeps(t, {}, { source });
     app = buildTestApp(deps);
     await app.ready();
   });
@@ -116,17 +116,36 @@ describe('snapshots API', () => {
     expect(body[0]).toMatchObject({ price: v1.price, isInitial: true });
   });
 
-  it('POST /api/snapshots/:id/retry-summary re-queues a failed summary only', async () => {
+  it('GET /api/snapshots/:id returns one snapshot', async () => {
+    await track();
+    await pollTimes(1);
+    const [only] = await list();
+    const res = await app.inject({ method: 'GET', url: `/api/snapshots/${only!.id}` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual(only);
+    expect((await app.inject({ method: 'GET', url: '/api/snapshots/999999' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/snapshots/abc' })).statusCode).toBe(400);
+  });
+
+  it('POST /api/snapshots/:id/retry-summary re-queues a failed summary, idempotently', async () => {
     await track();
     await pollTimes(2);
     const [changed] = await list();
     expect(changed!.summaryStatus).toBe('pending');
 
-    const notFailed = await app.inject({
+    // Already pending: same end state, so the same answer.
+    const alreadyQueued = await app.inject({
       method: 'POST',
       url: `/api/snapshots/${changed!.id}/retry-summary`,
     });
-    expect(notFailed.statusCode).toBe(409);
+    expect(alreadyQueued.statusCode).toBe(202);
+
+    await t.db.execute(
+      sql`UPDATE snapshots SET summary_status = 'done', summary = 'x', summary_next_attempt_at = NULL WHERE id = ${changed!.id}`,
+    );
+    const done = await app.inject({ method: 'POST', url: `/api/snapshots/${changed!.id}/retry-summary` });
+    expect(done.statusCode).toBe(409);
+    expect(done.json()).toMatchObject({ error: { code: 'invalid_state' } });
 
     await t.db.execute(
       sql`UPDATE snapshots SET summary_status = 'failed', summary_next_attempt_at = NULL, summary_attempts = 3, summary_error = 'boom' WHERE id = ${changed!.id}`,

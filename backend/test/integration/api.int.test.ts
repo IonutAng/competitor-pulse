@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { CompetitorDto } from '../../src/routes/competitors.js';
+import type { CompetitorDto } from '../../src/routes/schemas.js';
 import { buildTestApp, testDeps } from '../helpers/app.js';
 import { setupTestDb, type TestDb } from '../helpers/db.js';
 
@@ -9,7 +9,7 @@ describe('competitors API', () => {
 
   beforeAll(async () => {
     t = await setupTestDb();
-    app = buildTestApp(testDeps(t.db));
+    app = buildTestApp(testDeps(t));
     await app.ready();
   });
   beforeEach(() => t.reset());
@@ -25,8 +25,13 @@ describe('competitors API', () => {
       payload: { id: 'acme-crm' },
     });
     expect(created.statusCode).toBe(201);
+    expect(created.headers.location).toBe('/api/competitors/acme-crm');
     expect(created.json()).toMatchObject({ id: 'acme-crm', lastPolledAt: null, lastError: null });
     expect(created.json<CompetitorDto>().createdAt).toMatch(/Z$/);
+
+    const one = await app.inject({ method: 'GET', url: created.headers.location as string });
+    expect(one.statusCode).toBe(200);
+    expect(one.json()).toEqual(created.json());
 
     const listed = await app.inject({ method: 'GET', url: '/api/competitors' });
     expect(listed.statusCode).toBe(200);
@@ -67,14 +72,19 @@ describe('competitors API', () => {
       payload: '{not json',
     });
     expect(notJson.statusCode).toBe(400);
-    expect(notJson.json()).toHaveProperty('error.code');
+    expect(notJson.json()).toMatchObject({ error: { code: 'invalid_json' } });
   });
 
-  it('answers 404 when removing something that is not tracked', async () => {
+  it('answers 404 for competitors that are not tracked, however the id looks', async () => {
     for (const id of ['ghost', 'Not A Slug']) {
-      const res = await app.inject({ method: 'DELETE', url: `/api/competitors/${encodeURIComponent(id)}` });
-      expect(res.statusCode, id).toBe(404);
-      expect(res.json()).toMatchObject({ error: { code: 'not_found' } });
+      const removed = await app.inject({
+        method: 'DELETE',
+        url: `/api/competitors/${encodeURIComponent(id)}`,
+      });
+      expect(removed.statusCode, id).toBe(404);
+      expect(removed.json()).toMatchObject({ error: { code: 'not_found' } });
+      const fetched = await app.inject({ method: 'GET', url: `/api/competitors/${encodeURIComponent(id)}` });
+      expect(fetched.statusCode, id).toBe(404);
     }
   });
 });

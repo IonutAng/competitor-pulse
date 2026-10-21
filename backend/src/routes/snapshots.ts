@@ -1,17 +1,27 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import type { AppDeps } from '../app.js';
 import type { SnapshotRow } from '../db/schema.js';
+import type { Deps } from '../deps.js';
 import { HttpError } from '../http-error.js';
 import { idParams } from './competitors.js';
+import {
+  errorEnvelopeSchema,
+  pollAcceptedSchema,
+  retryAcceptedSchema,
+  snapshotSchema,
+  type SnapshotDto,
+} from './schemas.js';
 
 const listQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(1000).optional(),
+  // Bounded even when omitted: the UI pages 50 at a time, and a history grows forever.
+  limit: z.coerce.number().int().min(1).max(1000).default(1000),
   before: z.coerce.number().int().positive().optional(),
 });
 
-/** The contract's Snapshot shape plus a few extras the UI uses (id, isInitial, changedFields, summaryStatus, summaryError). */
-export function toSnapshotDto(row: SnapshotRow) {
+const snapshotIdParams = z.object({ id: z.coerce.number().int().positive() });
+
+/** The contract's Snapshot shape plus the extras the UI uses; see schemas.ts for the wire format. */
+export function toSnapshotDto(row: SnapshotRow): SnapshotDto {
   return {
     id: row.id,
     fetchedAt: row.fetchedAt.toISOString(),
@@ -29,12 +39,21 @@ export function toSnapshotDto(row: SnapshotRow) {
     summaryError: row.summaryError,
   };
 }
-export type SnapshotDto = ReturnType<typeof toSnapshotDto>;
 
-export const snapshotRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { competitors, snapshots }) => {
+export const snapshotRoutes: FastifyPluginAsyncZod<Deps> = async (app, { competitors, snapshots }) => {
   app.get(
     '/api/competitors/:id/snapshots',
-    { schema: { params: idParams, querystring: listQuery } },
+    {
+      schema: {
+        tags: ['snapshots'],
+        summary: "A competitor's history, newest first",
+        description:
+          "Keyset pagination: more pages exist iff the response holds `limit` items; pass the last item's `id` as `before`.",
+        params: idParams,
+        querystring: listQuery,
+        response: { 200: z.array(snapshotSchema), 404: errorEnvelopeSchema },
+      },
+    },
     async (request) => {
       const { id } = request.params;
       if (!(await competitors.get(id))) {
@@ -45,31 +64,67 @@ export const snapshotRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { comp
     },
   );
 
-  // "Poll now": makes the competitor due; the poll worker picks it up on its next tick.
-  app.post('/api/competitors/:id/poll', { schema: { params: idParams } }, async (request, reply) => {
-    const { id } = request.params;
-    const nextPollAt = await competitors.requestPoll(id);
-    if (!nextPollAt) {
-      throw new HttpError(404, 'not_found', `Competitor "${id}" is not tracked`);
-    }
-    return reply.status(202).send({ id, nextPollAt: nextPollAt.toISOString() });
-  });
+  app.get(
+    '/api/snapshots/:id',
+    {
+      schema: {
+        tags: ['snapshots'],
+        summary: 'One snapshot',
+        params: snapshotIdParams,
+        response: { 200: snapshotSchema, 404: errorEnvelopeSchema },
+      },
+    },
+    async (request) => {
+      const row = await snapshots.getById(request.params.id);
+      if (!row) throw new HttpError(404, 'not_found', `Snapshot ${request.params.id} not found`);
+      return toSnapshotDto(row);
+    },
+  );
 
-  // Recovery path for a summary that exhausted its attempts (e.g. the LLM was down for longer
-  // than the retry budget): back to the queue with a fresh attempt counter.
+  app.post(
+    '/api/competitors/:id/poll',
+    {
+      schema: {
+        tags: ['competitors'],
+        summary: 'Poll now',
+        description: 'Makes the competitor due immediately; the poll worker picks it up on its next tick.',
+        params: idParams,
+        response: { 202: pollAcceptedSchema, 404: errorEnvelopeSchema },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params;
+      const nextPollAt = await competitors.requestPoll(id);
+      if (!nextPollAt) throw new HttpError(404, 'not_found', `Competitor "${id}" is not tracked`);
+      return reply.status(202).send({ id, nextPollAt: nextPollAt.toISOString() });
+    },
+  );
+
   app.post(
     '/api/snapshots/:id/retry-summary',
-    { schema: { params: z.object({ id: z.coerce.number().int().positive() }) } },
+    {
+      schema: {
+        tags: ['snapshots'],
+        summary: 'Re-queue a failed summary',
+        description:
+          'The recovery path after an LLM outage longer than the retry budget. Idempotent: a summary that is already pending answers 202 too; one that is done or not applicable answers 409.',
+        params: snapshotIdParams,
+        response: { 202: retryAcceptedSchema, 404: errorEnvelopeSchema, 409: errorEnvelopeSchema },
+      },
+    },
     async (request, reply) => {
       const { id } = request.params;
       if (!(await snapshots.retrySummary(id))) {
         const snapshot = await snapshots.getById(id);
         if (!snapshot) throw new HttpError(404, 'not_found', `Snapshot ${id} not found`);
-        throw new HttpError(
-          409,
-          'not_failed',
-          `Snapshot ${id} has no failed summary to retry (status: ${snapshot.summaryStatus})`,
-        );
+        if (snapshot.summaryStatus !== 'pending') {
+          throw new HttpError(
+            409,
+            'invalid_state',
+            `Snapshot ${id} has no failed summary to retry (status: ${snapshot.summaryStatus})`,
+          );
+        }
+        // Already queued (a double click, or a client retrying a dropped response): same end state.
       }
       return reply.status(202).send({ id, summaryStatus: 'pending' });
     },
