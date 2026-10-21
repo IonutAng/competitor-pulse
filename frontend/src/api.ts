@@ -23,6 +23,8 @@ export interface Snapshot {
   changed: boolean;
   summary: string | null;
   isInitial: boolean;
+  /** null for a competitor's first snapshot; otherwise the snapshot this one was diffed against. */
+  previousSnapshotId: number | null;
   changedFields: ListingField[];
   summaryStatus: SummaryStatus;
   summaryError: string | null;

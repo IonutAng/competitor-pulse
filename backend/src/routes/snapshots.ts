@@ -23,6 +23,7 @@ export function toSnapshotDto(row: SnapshotRow) {
     // Contract: null unless a summary was produced (unchanged, pending and failed all read as null).
     summary: row.summaryStatus === 'done' ? row.summary : null,
     isInitial: row.previousSnapshotId === null,
+    previousSnapshotId: row.previousSnapshotId,
     changedFields: row.changedFields,
     summaryStatus: row.summaryStatus,
     summaryError: row.summaryError,

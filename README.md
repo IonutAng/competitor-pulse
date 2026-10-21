@@ -104,6 +104,7 @@ GET    /api/competitors/:id/snapshots        -> 200 [Snapshot, ...]   newest fir
   "summary": "Price rose …",       // null if unchanged, pending or failed
   "id": 42,                        // ordering key; also the keyset cursor
   "isInitial": false,              // first snapshot of this competitor (nothing to compare against)
+  "previousSnapshotId": 41,        // the snapshot this one was diffed against; null for the first
   "changedFields": ["price"],      // computed in code, in a fixed order
   "summaryStatus": "done",         // none | pending | done | failed
   "summaryError": null             // last LLM error, if any

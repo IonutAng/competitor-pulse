@@ -1,12 +1,24 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
 import { ApiError, LISTING_FIELDS, api, errorText, type Snapshot } from '../api';
+import { Button, Chip, Notice, Skeleton, SparkIcon } from '../components/ui';
 import { formatDateTime, timeAgo } from '../time';
 
 const PAGE_SIZE = 50;
 
+type SnapshotState = 'initial' | 'unchanged' | 'pending' | 'failed' | 'changed';
+
+function stateOf(snapshot: Snapshot): SnapshotState {
+  if (snapshot.isInitial) return 'initial';
+  if (!snapshot.changed) return 'unchanged';
+  if (snapshot.summaryStatus === 'pending') return 'pending';
+  if (snapshot.summaryStatus === 'failed') return 'failed';
+  return 'changed';
+}
+
 export function CompetitorTimeline() {
   const { id = '' } = useParams();
+  const queryClient = useQueryClient();
 
   const timeline = useInfiniteQuery({
     queryKey: ['snapshots', id],
@@ -23,8 +35,6 @@ export function CompetitorTimeline() {
   const competitor = competitors.data?.find((c) => c.id === id);
 
   const pollNow = useMutation({ mutationFn: api.pollNow });
-
-  const queryClient = useQueryClient();
   const retrySummary = useMutation({
     mutationFn: api.retrySummary,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['snapshots', id] }),
@@ -32,106 +42,183 @@ export function CompetitorTimeline() {
 
   if (timeline.isError && timeline.error instanceof ApiError && timeline.error.status === 404) {
     return (
-      <p>
-        <code>{id}</code> is not tracked. <Link to="/">Back to the list</Link>
-      </p>
+      <div className="card">
+        <h2>
+          <code>{id}</code> is not tracked
+        </h2>
+        <p className="muted">
+          <Link to="/">Back to the tracked competitors</Link>
+        </p>
+      </div>
     );
   }
 
   const snapshots = timeline.data?.pages.flat() ?? [];
+  // Lets a card show "old → new" for its changed fields when its predecessor is loaded.
+  const byId = new Map(snapshots.map((s) => [s.id, s]));
 
   return (
-    <section>
-      <p>
+    <>
+      <p className="small">
         <Link to="/">← All competitors</Link>
       </p>
-      <div className="title-row">
-        <h2>{id}</h2>
-        <button type="button" onClick={() => pollNow.mutate(id)} disabled={pollNow.isPending}>
+      <div className="tl-head">
+        <h1>{id}</h1>
+        {competitor?.lastError ? (
+          <Chip tone="danger" title={competitor.lastError}>
+            Fetch error
+          </Chip>
+        ) : competitor?.lastPolledAt ? (
+          <Chip tone="ok">Healthy</Chip>
+        ) : null}
+        <Button variant="primary" size="sm" onClick={() => pollNow.mutate(id)} disabled={pollNow.isPending}>
           Poll now
-        </button>
-        {pollNow.isSuccess && <span className="muted">queued — the next snapshot appears within a few seconds</span>}
-        {pollNow.isError && <span className="error">{errorText(pollNow.error)}</span>}
+        </Button>
+        {pollNow.isSuccess && <span className="muted small">queued — the next snapshot appears within a few seconds</span>}
+        {pollNow.isError && <span className="small" style={{ color: 'var(--danger)' }}>{errorText(pollNow.error)}</span>}
       </div>
       {competitor?.lastError && (
-        <p className="error">
+        <Notice>
           Last fetch failed: {competitor.lastError}
-          {competitor.lastPolledAt && <span className="muted"> ({timeAgo(competitor.lastPolledAt)})</span>}
-        </p>
+          {competitor.lastPolledAt && <span> ({timeAgo(competitor.lastPolledAt)})</span>}
+        </Notice>
       )}
 
       {timeline.isPending ? (
-        <p>Loading…</p>
+        <div className="card">
+          <Skeleton width="35%" />
+          <Skeleton width="80%" />
+          <Skeleton width="60%" />
+        </div>
       ) : timeline.isError ? (
-        <p className="error">Could not load snapshots: {errorText(timeline.error)}</p>
+        <Notice>Could not load snapshots: {errorText(timeline.error)}</Notice>
       ) : snapshots.length === 0 ? (
-        <p>No snapshots yet — the first poll runs within a few seconds of adding a competitor.</p>
+        <div className="empty">
+          <strong>No snapshots yet.</strong>
+          <br />
+          The first poll runs within a few seconds of adding a competitor.
+        </div>
       ) : (
         <ol className="timeline">
-          {snapshots.map((snapshot) => (
-            <li key={snapshot.id}>
-              <SnapshotCard
-                snapshot={snapshot}
-                onRetry={() => retrySummary.mutate(snapshot.id)}
-                retrying={retrySummary.isPending && retrySummary.variables === snapshot.id}
-              />
-            </li>
-          ))}
+          {snapshots.map((snapshot) => {
+            const state = stateOf(snapshot);
+            return (
+              <li key={snapshot.id} className={`tl-item tl-${state}`}>
+                <span className="tl-dot" aria-hidden="true" />
+                <SnapshotCard
+                  snapshot={snapshot}
+                  state={state}
+                  previous={snapshot.previousSnapshotId === null ? undefined : byId.get(snapshot.previousSnapshotId)}
+                  onRetry={() => retrySummary.mutate(snapshot.id)}
+                  retrying={retrySummary.isPending && retrySummary.variables === snapshot.id}
+                />
+              </li>
+            );
+          })}
         </ol>
       )}
 
       {timeline.hasNextPage && (
-        <button type="button" onClick={() => timeline.fetchNextPage()} disabled={timeline.isFetchingNextPage}>
-          {timeline.isFetchingNextPage ? 'Loading…' : 'Load older snapshots'}
-        </button>
+        <div className="load-more">
+          <Button onClick={() => timeline.fetchNextPage()} disabled={timeline.isFetchingNextPage}>
+            {timeline.isFetchingNextPage ? 'Loading…' : 'Load older snapshots'}
+          </Button>
+        </div>
       )}
-    </section>
+    </>
   );
 }
 
-function SnapshotCard({ snapshot, onRetry, retrying }: { snapshot: Snapshot; onRetry: () => void; retrying: boolean }) {
+function SnapshotCard({
+  snapshot,
+  state,
+  previous,
+  onRetry,
+  retrying,
+}: {
+  snapshot: Snapshot;
+  state: SnapshotState;
+  previous: Snapshot | undefined;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  const showDiff = snapshot.changed && previous !== undefined && snapshot.changedFields.length > 0;
   return (
-    <article className={`snapshot${snapshot.changed ? ' snapshot-changed' : ''}`}>
-      <header>
-        <time dateTime={snapshot.fetchedAt} title={snapshot.fetchedAt}>
-          {formatDateTime(snapshot.fetchedAt)}
-        </time>
-        <SummaryBadge snapshot={snapshot} />
+    <article className="card snapshot">
+      <header className="snapshot-head">
+        <span className="snapshot-time">
+          <time dateTime={snapshot.fetchedAt} title={snapshot.fetchedAt}>
+            {formatDateTime(snapshot.fetchedAt)}
+          </time>
+          <span className="muted">{timeAgo(snapshot.fetchedAt)}</span>
+        </span>
+        <StateChip state={state} />
       </header>
-      <table className="fields">
-        <tbody>
-          {LISTING_FIELDS.map((field) => (
-            <tr key={field} className={snapshot.changedFields.includes(field) ? 'changed' : undefined}>
-              <th>{field}</th>
-              <td>{snapshot[field]}</td>
-            </tr>
+
+      {showDiff && (
+        <ul className="diff">
+          {snapshot.changedFields.map((field) => (
+            <li key={field}>
+              <span className="diff-field">{field}</span>
+              <span>
+                <span className="diff-old">{previous[field]}</span>
+                <span className="diff-arrow">→</span>
+                <span className="diff-new">{snapshot[field]}</span>
+              </span>
+            </li>
           ))}
-        </tbody>
-      </table>
-      {snapshot.summaryStatus === 'done' && snapshot.summary && <p className="summary">{snapshot.summary}</p>}
-      {snapshot.summaryStatus === 'failed' && (
-        <p className="error">
-          Summary failed: {snapshot.summaryError ?? 'unknown error'}{' '}
-          <button type="button" onClick={onRetry} disabled={retrying}>
-            Retry summary
-          </button>
-        </p>
+        </ul>
+      )}
+
+      <dl className={`fields${state === 'unchanged' ? ' fields-compact' : ''}`}>
+        {LISTING_FIELDS.map((field) => (
+          // The diff above already points at what changed; highlight rows only when it could not be shown.
+          <div key={field} className={!showDiff && snapshot.changedFields.includes(field) ? 'changed' : undefined}>
+            <dt>{field}</dt>
+            <dd>{snapshot[field]}</dd>
+          </div>
+        ))}
+      </dl>
+
+      {snapshot.changed && (
+        <div className={`summary summary-${snapshot.summaryStatus}`}>
+          <div className="summary-label">
+            <SparkIcon />
+            AI summary
+          </div>
+          {snapshot.summaryStatus === 'done' && <p>{snapshot.summary}</p>}
+          {snapshot.summaryStatus === 'pending' && (
+            <>
+              <Skeleton width="92%" />
+              <Skeleton width="68%" />
+              <p className="muted small">Waiting for the model…</p>
+            </>
+          )}
+          {snapshot.summaryStatus === 'failed' && (
+            <>
+              <p>{snapshot.summaryError ?? 'Unknown error'}</p>
+              <Button size="sm" onClick={onRetry} disabled={retrying}>
+                {retrying ? 'Queuing…' : 'Retry summary'}
+              </Button>
+            </>
+          )}
+        </div>
       )}
     </article>
   );
 }
 
-function SummaryBadge({ snapshot }: { snapshot: Snapshot }) {
-  if (snapshot.isInitial) return <span className="badge">Initial snapshot</span>;
-  if (!snapshot.changed) return <span className="badge">No change</span>;
-  switch (snapshot.summaryStatus) {
+function StateChip({ state }: { state: SnapshotState }) {
+  switch (state) {
+    case 'initial':
+      return <Chip tone="ok">Initial snapshot</Chip>;
+    case 'unchanged':
+      return <Chip>No change</Chip>;
     case 'pending':
-      return <span className="badge badge-pending">Changed · summary pending…</span>;
+      return <Chip tone="warn">Changed · summarizing…</Chip>;
     case 'failed':
-      return <span className="badge badge-error">Changed · summary failed</span>;
-    case 'done':
-      return <span className="badge badge-changed">Changed</span>;
-    default:
-      return <span className="badge badge-changed">Changed</span>;
+      return <Chip tone="danger">Changed · summary failed</Chip>;
+    case 'changed':
+      return <Chip tone="accent">Changed</Chip>;
   }
 }

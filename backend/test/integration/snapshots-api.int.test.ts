@@ -59,11 +59,18 @@ describe('snapshots API', () => {
       changed: true,
       summary: null, // pending, not produced yet
       isInitial: false,
+      previousSnapshotId: body[1].id,
       changedFields: ['tagline', 'description'],
       summaryStatus: 'pending',
     });
     expect(newest.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-    expect(oldest).toMatchObject({ changed: false, summary: null, isInitial: true, summaryStatus: 'none' });
+    expect(oldest).toMatchObject({
+      changed: false,
+      summary: null,
+      isInitial: true,
+      previousSnapshotId: null,
+      summaryStatus: 'none',
+    });
   });
 
   it('paginates with ?limit and the ?before keyset cursor', async () => {
