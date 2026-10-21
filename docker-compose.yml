@@ -1,13 +1,13 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine
     environment:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
       POSTGRES_DB: competitorpulse
-    # Host port 5439 by default so a Postgres already running on 5432 is left alone.
+    # Loopback only, and host port 5439 by default so a Postgres already on 5432 is left alone.
     ports:
-      - '${POSTGRES_PORT:-5439}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5439}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/db-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
@@ -21,13 +21,16 @@ services:
     build: ./mock-llm
     # The script has no SIGTERM handler; an init process makes `docker compose stop` immediate.
     init: true
-    # Published so the demo can drive /control/* (stats, failNext, latency) from the host.
+    # Published on loopback so the demo can drive /control/* (stats, failNext, latency) from the host.
     ports:
-      - '4001:4001'
+      - '127.0.0.1:4001:4001'
 
   # API + built frontend on http://localhost:3000. Migrations run on startup.
   app:
     build: .
+    restart: unless-stopped
+    # Longer than SHUTDOWN_TIMEOUT_MS (LLM_TIMEOUT_MS + 5 s by default), so a graceful stop is never cut short.
+    stop_grace_period: 25s
     ports:
       - '${APP_PORT:-3000}:3000'
     environment:

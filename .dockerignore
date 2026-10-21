@@ -2,8 +2,8 @@
 **/dist
 **/coverage
 .git
-.env
-.env.*
+**/.env
+**/.env.*
 **/.DS_Store
 backend/public
 *.md

@@ -56,9 +56,12 @@ export function buildMessages(previous: Listing, current: Listing, fields: Listi
   ];
 }
 
+/** Longest summary we store: a model that rambles gets cut, not stored verbatim. */
+export const MAX_SUMMARY_CHARS = 2000;
+
 /** Normalises a completion's text; an empty answer is treated as a failed call. */
 export function extractSummary(content: string | null | undefined): string {
   const summary = (content ?? '').replace(/\s+/g, ' ').trim();
   if (summary.length === 0) throw new Error('LLM returned an empty summary');
-  return summary;
+  return summary.length > MAX_SUMMARY_CHARS ? `${summary.slice(0, MAX_SUMMARY_CHARS - 1)}…` : summary;
 }

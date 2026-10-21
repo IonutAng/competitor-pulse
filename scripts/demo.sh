@@ -19,6 +19,11 @@ MOCK=${MOCK:-http://localhost:4001}
 
 json() { curl -sS -H 'content-type: application/json' "$@"; }
 
+usage() { sed -n '2,15p' "$0"; exit 1; }
+case "${1:-}" in
+  add|remove|poll|show|fail-next|latency) [ $# -ge 2 ] || usage ;;
+esac
+
 case "${1:-}" in
   add)     json -X POST -d "{\"id\":\"$2\"}" -w '\nHTTP %{http_code}\n' "$APP/api/competitors" ;;
   remove)  curl -sS -X DELETE -w 'HTTP %{http_code}\n' "$APP/api/competitors/$2" ;;
@@ -37,5 +42,5 @@ case "${1:-}" in
   fail-next) json -X POST -d "{\"failNext\":$2}" "$MOCK/control/configure"; echo ;;
   latency)   json -X POST -d "{\"latencyMs\":$2}" "$MOCK/control/configure"; echo ;;
   reset)     curl -sS -X POST "$MOCK/control/reset"; echo ;;
-  *) sed -n '2,15p' "$0"; exit 1 ;;
+  *) usage ;;
 esac

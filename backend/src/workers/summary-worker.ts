@@ -1,24 +1,21 @@
 import type { FastifyBaseLogger } from 'fastify';
+import { LISTING_FIELDS, type SnapshotRow } from '../db/schema.js';
 import type { Deps } from '../deps.js';
 import { decideRetry } from '../domain/retry.js';
 import { errorMessage } from '../errors.js';
+import { isTransientSummarizerError } from '../llm/summarizer.js';
 import type { SummaryJob } from '../repo/snapshots.js';
+import type { Listing } from '../source/listing-source.js';
 import { startLoop, type Loop } from './loop.js';
 
 /** A lease outlives the LLM timeout by this much, so a call that is still running can never be claimed again. */
 const LEASE_GRACE_MS = 5000;
 
-/** Timeouts surface as abort errors with no useful text ("Request was aborted."); say what happened. */
-function describeLlmError(err: unknown, timeoutMs: number): string {
-  const kind = err instanceof Error ? err.constructor.name : '';
-  const message = errorMessage(err);
-  if (
-    ['AbortError', 'TimeoutError', 'APIUserAbortError', 'APIConnectionTimeoutError'].includes(kind) ||
-    /aborted|timed out/i.test(message)
-  ) {
-    return `LLM call timed out after ${timeoutMs} ms`;
-  }
-  return message;
+/** Only the four listing fields leave the worker; the rest of the row is none of the model's business. */
+function toListing(row: SnapshotRow): Listing {
+  const listing = {} as Listing;
+  for (const field of LISTING_FIELDS) listing[field] = row[field];
+  return listing;
 }
 
 /**
@@ -38,12 +35,12 @@ export class SummaryWorker {
       name: 'summary',
       intervalMs: this.deps.config.SUMMARY_TICK_MS,
       log: this.log,
-      tick: () => this.tick(),
+      tick: (signal) => this.tick(signal),
     });
   }
 
   /** Reaps dead jobs, then claims and runs one batch. Returns true when the batch was full. */
-  async tick(): Promise<boolean> {
+  async tick(signal?: AbortSignal): Promise<boolean> {
     const { config, snapshots } = this.deps;
     const reaped = await snapshots.reapExhaustedSummaries(config.LLM_MAX_ATTEMPTS);
     if (reaped > 0) this.log.warn({ reaped }, 'summaries marked failed: all attempts used without a result');
@@ -54,58 +51,85 @@ export class SummaryWorker {
       config.LLM_TIMEOUT_MS + LEASE_GRACE_MS,
     );
     if (jobs.length === 0) return false;
-    await Promise.all(jobs.map((job) => this.summarizeOne(job)));
+    const results = await Promise.allSettled(jobs.map((job) => this.summarizeOne(job, signal)));
+    for (const result of results) {
+      if (result.status === 'rejected')
+        this.log.error({ err: result.reason }, 'summarizeOne threw unexpectedly');
+    }
     return jobs.length >= config.SUMMARY_CONCURRENCY;
   }
 
-  /** Runs one claimed job. Never throws: outcomes are written to the snapshot row. */
-  async summarizeOne({ id, attempt }: SummaryJob): Promise<void> {
-    const { config, snapshots, summarizer } = this.deps;
+  /**
+   * Runs one claimed job. Never throws: an LLM failure is recorded on the row (retry or give up),
+   * and a database failure is logged — the lease expires and the job is claimed again.
+   */
+  async summarizeOne({ id, attempt }: SummaryJob, signal?: AbortSignal): Promise<void> {
+    const { snapshots, summarizer } = this.deps;
     const log = this.log.child({ snapshotId: id, attempt });
-
-    const snapshot = await snapshots.getById(id);
-    if (!snapshot) {
-      log.info('snapshot was removed before it could be summarized');
-      return;
-    }
-    const previous =
-      snapshot.previousSnapshotId === null ? undefined : await snapshots.getById(snapshot.previousSnapshotId);
-    if (!previous) {
-      // Cannot happen through recordPoll (only diffs against a previous row are "changed"), but a
-      // job must always end in a terminal state.
-      await snapshots.failSummary(
-        id,
-        attempt,
-        'previous snapshot is missing; nothing to compare against',
-        null,
-      );
-      log.error('summary failed: previous snapshot missing');
-      return;
-    }
-
     try {
-      const summary = await summarizer.summarize(
-        previous,
-        snapshot,
-        snapshot.changedFields,
-        AbortSignal.timeout(config.LLM_TIMEOUT_MS),
-      );
+      const snapshot = await snapshots.getById(id);
+      if (!snapshot) {
+        log.info('snapshot was removed before it could be summarized');
+        return;
+      }
+      const previous =
+        snapshot.previousSnapshotId === null
+          ? undefined
+          : await snapshots.getById(snapshot.previousSnapshotId);
+      if (!previous) {
+        // Cannot happen through recordPoll (only diffs against a previous row are "changed"), but a
+        // job must always end in a terminal state.
+        await snapshots.failSummary(
+          id,
+          attempt,
+          'previous snapshot is missing; nothing to compare against',
+          null,
+        );
+        log.error('summary failed: previous snapshot missing');
+        return;
+      }
+
+      let summary: string;
+      try {
+        summary = await summarizer.summarize(
+          toListing(previous),
+          toListing(snapshot),
+          snapshot.changedFields,
+          signal,
+        );
+      } catch (err) {
+        await this.recordFailure(id, attempt, err, log);
+        return;
+      }
       const stored = await snapshots.completeSummary(id, attempt, summary);
       if (stored) log.info('summary stored');
       else log.warn('summary discarded: the job was re-claimed or removed while the LLM was running');
     } catch (err) {
-      const message = describeLlmError(err, config.LLM_TIMEOUT_MS);
-      const decision = decideRetry(attempt, config.LLM_MAX_ATTEMPTS, err, {
-        baseDelayMs: config.SUMMARY_BACKOFF_BASE_MS,
-        maxDelayMs: config.SUMMARY_BACKOFF_MAX_MS,
-      });
-      if (decision.outcome === 'retry') {
-        await snapshots.failSummary(id, attempt, message, decision.delayMs);
-        log.warn({ err, retryInMs: decision.delayMs }, 'summary attempt failed; will retry');
-      } else {
-        await snapshots.failSummary(id, attempt, `${message} (${decision.reason})`, null);
-        log.error({ err, reason: decision.reason }, 'summary failed permanently');
-      }
+      log.error(
+        { err },
+        'summary job failed outside the LLM call; it will be re-claimed when its lease expires',
+      );
+    }
+  }
+
+  private async recordFailure(
+    id: number,
+    attempt: number,
+    err: unknown,
+    log: FastifyBaseLogger,
+  ): Promise<void> {
+    const { config, snapshots } = this.deps;
+    const message = errorMessage(err);
+    const decision = decideRetry(attempt, config.LLM_MAX_ATTEMPTS, isTransientSummarizerError(err), {
+      baseDelayMs: config.SUMMARY_BACKOFF_BASE_MS,
+      maxDelayMs: config.SUMMARY_BACKOFF_MAX_MS,
+    });
+    if (decision.outcome === 'retry') {
+      await snapshots.failSummary(id, attempt, message, decision.delayMs);
+      log.warn({ err, retryInMs: decision.delayMs }, 'summary attempt failed; will retry');
+    } else {
+      await snapshots.failSummary(id, attempt, `${message} (${decision.reason})`, null);
+      log.error({ err, reason: decision.reason }, 'summary failed permanently');
     }
   }
 }

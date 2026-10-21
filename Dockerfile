@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 # Builds the backend and the frontend into one image: the backend serves the built React app.
 
-FROM node:22-alpine AS base
+# Pinned to a minor so two builds a month apart produce the same image.
+FROM node:22.23-alpine AS base
 RUN npm install -g pnpm@10.15.1
 WORKDIR /app
 
@@ -28,7 +29,7 @@ RUN pnpm install --prod --frozen-lockfile --ignore-scripts --filter backend
 
 # Runtime: compiled backend, production node_modules (pnpm's symlinked layout is kept intact by
 # copying both levels), SQL migrations, fixtures and the built frontend.
-FROM node:22-alpine AS runtime
+FROM node:22.23-alpine AS runtime
 ENV NODE_ENV=production \
     STATIC_DIR=/app/backend/public
 WORKDIR /app/backend

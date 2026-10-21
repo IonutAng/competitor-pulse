@@ -1,8 +1,7 @@
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CompetitorRepo } from '../../src/repo/competitors.js';
 import { setupTestDb, type TestDb } from '../helpers/db.js';
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('CompetitorRepo scheduling', () => {
   let t: TestDb;
@@ -31,12 +30,15 @@ describe('CompetitorRepo scheduling', () => {
     expect(row!.nextPollAt.getTime()).toBeGreaterThan(Date.now() + 50_000);
   });
 
-  it('a claimed competitor becomes due again after its interval', async () => {
+  it('a claimed competitor becomes due again once its interval has passed', async () => {
     await repo.insert('acme');
-    expect(await repo.claimDue(10, 1000)).toEqual(['acme']);
-    expect(await repo.claimDue(10, 1000)).toEqual([]);
-    await sleep(1100);
-    expect(await repo.claimDue(10, 1000)).toEqual(['acme']);
+    expect(await repo.claimDue(10, 60_000)).toEqual(['acme']);
+    expect(await repo.claimDue(10, 60_000)).toEqual([]);
+    // Move the clock instead of waiting for it: the due time is the DB's own now().
+    await t.db.execute(
+      sql`UPDATE competitors SET next_poll_at = now() - interval '1 second' WHERE id = 'acme'`,
+    );
+    expect(await repo.claimDue(10, 60_000)).toEqual(['acme']);
   });
 
   it('requestPoll makes a competitor due immediately', async () => {

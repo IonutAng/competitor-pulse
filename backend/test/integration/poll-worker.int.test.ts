@@ -17,7 +17,7 @@ describe('PollWorker', () => {
   afterAll(() => t.close());
 
   function worker(source: ListingSource, env: NodeJS.ProcessEnv = {}): { deps: Deps; worker: PollWorker } {
-    const deps = testDeps(t.db, env, { source });
+    const deps = testDeps(t, env, { source });
     return { deps, worker: new PollWorker(deps, buildTestApp(deps).log) };
   }
 

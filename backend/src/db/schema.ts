@@ -79,7 +79,12 @@ export const snapshots = pgTable(
     index('snapshots_summary_queue_idx')
       .on(t.summaryNextAttemptAt, t.id)
       .where(sql`${t.summaryStatus} = 'pending'`),
+    // The self-referencing FK is checked for every row a competitor's delete cascades over;
+    // without this index each of those checks is a scan of the whole table.
+    index('snapshots_previous_idx').on(t.previousSnapshotId),
     check('snapshots_summary_status', sql`${t.summaryStatus} IN ('none', 'pending', 'done', 'failed')`),
+    check('snapshots_attempts_non_negative', sql`${t.summaryAttempts} >= 0`),
+    check('snapshots_changed_has_fields', sql`NOT ${t.changed} OR cardinality(${t.changedFields}) > 0`),
     check('snapshots_changed_iff_summary', sql`${t.changed} = (${t.summaryStatus} <> 'none')`),
     check(
       'snapshots_pending_iff_next_attempt',

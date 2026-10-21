@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import pLimit from 'p-limit';
 import type { Deps } from '../deps.js';
+import { clipListing } from '../domain/diff.js';
 import { PG_FOREIGN_KEY_VIOLATION, errorMessage, pgErrorCode } from '../errors.js';
 import { UnknownCompetitorError } from '../source/listing-source.js';
 import { startLoop, type Loop } from './loop.js';
@@ -31,26 +32,40 @@ export class PollWorker {
       name: 'poll',
       intervalMs: this.deps.config.SCHEDULER_TICK_MS,
       log: this.log,
-      tick: () => this.tick(),
+      tick: (signal) => this.tick(signal),
     });
   }
 
   /** Claims and polls one batch. Returns true when the batch was full, i.e. more competitors may be due. */
-  async tick(): Promise<boolean> {
+  async tick(signal?: AbortSignal): Promise<boolean> {
     const { config, competitors } = this.deps;
     const ids = await competitors.claimDue(config.POLL_BATCH_SIZE, config.POLL_INTERVAL_MS);
     if (ids.length === 0) return false;
     const limit = pLimit(config.POLL_CONCURRENCY);
-    await Promise.all(ids.map((id) => limit(() => this.pollOne(id))));
+    const results = await Promise.allSettled(ids.map((id) => limit(() => this.pollOne(id, signal))));
+    for (const result of results) {
+      if (result.status === 'rejected') this.log.error({ err: result.reason }, 'pollOne threw unexpectedly');
+    }
     return ids.length >= config.POLL_BATCH_SIZE;
   }
 
-  /** Fetches one competitor's listing and records it. Never throws: failures land in competitors.last_error. */
-  async pollOne(id: string): Promise<void> {
+  /**
+   * Fetches one competitor's listing and records it. Never throws: fetch failures land in
+   * competitors.last_error, and a failing write is logged.
+   */
+  async pollOne(id: string, signal?: AbortSignal): Promise<void> {
     const { config, source, snapshots, competitors } = this.deps;
     const log = this.log.child({ competitorId: id });
     try {
-      const listing = await source.fetchListing(id, AbortSignal.timeout(config.SOURCE_TIMEOUT_MS));
+      const timeout = AbortSignal.timeout(config.SOURCE_TIMEOUT_MS);
+      const fetched = await source.fetchListing(id, signal ? AbortSignal.any([signal, timeout]) : timeout);
+      const { listing, clipped } = clipListing(fetched, config.MAX_LISTING_FIELD_CHARS);
+      if (clipped.length > 0) {
+        log.warn(
+          { clipped, maxChars: config.MAX_LISTING_FIELD_CHARS },
+          'listing fields truncated before storing',
+        );
+      }
       const { snapshot, previous } = await snapshots.recordPoll(id, listing);
       const outcome =
         previous === undefined
@@ -69,7 +84,7 @@ export class PollWorker {
       log.warn({ err }, 'poll failed');
       await competitors
         .recordError(id, message)
-        .catch((recordErr) => log.error({ err: recordErr }, 'could not record the poll error'));
+        .catch((recordErr: unknown) => log.error({ err: recordErr }, 'could not record the poll error'));
     }
   }
 }

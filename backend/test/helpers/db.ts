@@ -6,7 +6,13 @@ export const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? 'postgres://app:app@localhost:5439/competitorpulse_test';
 
 export async function setupTestDb() {
-  const { pool, db } = createDb(TEST_DATABASE_URL, 5);
+  const { pool, db } = createDb({
+    connectionString: TEST_DATABASE_URL,
+    max: 10,
+    onError: () => {
+      /* a dropped idle client during tests is not a test failure */
+    },
+  });
   await runMigrations(db);
   return {
     db,

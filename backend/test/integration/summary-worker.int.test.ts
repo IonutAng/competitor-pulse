@@ -20,7 +20,7 @@ describe('SummaryWorker', () => {
 
   function setup(summarizer: FakeSummarizer, env: NodeJS.ProcessEnv = {}) {
     const source = new FixtureListingSource(new Map([['acme', [v1, v2, v3]]]));
-    const deps = testDeps(t.db, env, { source, summarizer });
+    const deps = testDeps(t, env, { source, summarizer });
     const log = buildTestApp(deps).log;
     return { deps, poll: new PollWorker(deps, log), worker: new SummaryWorker(deps, log) };
   }
@@ -185,13 +185,14 @@ describe('SummaryWorker', () => {
   });
 
   it('survives the competitor being removed while the LLM is running', async () => {
-    let deps: Deps | undefined;
+    // The fake needs the deps that are only built once the fake exists: a holder breaks the cycle.
+    const holder: { deps?: Deps } = {};
     const summarizer = new FakeSummarizer(async () => {
-      await deps!.competitors.delete('acme');
+      await holder.deps!.competitors.delete('acme');
       return 'too late';
     });
     const s = setup(summarizer);
-    deps = s.deps;
+    holder.deps = s.deps;
     await changedSnapshot(s.deps, s.poll);
     await expect(s.worker.tick()).resolves.toBe(false);
     expect(await s.deps.snapshots.listByCompetitor('acme')).toEqual([]);

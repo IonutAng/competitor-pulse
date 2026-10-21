@@ -1,5 +1,5 @@
 import type { ListingField } from '../../src/db/schema.js';
-import type { Summarizer } from '../../src/llm/summarizer.js';
+import { SummarizerError, type Summarizer } from '../../src/llm/summarizer.js';
 import type { Listing } from '../../src/source/listing-source.js';
 
 type Outcome = () => Promise<string>;
@@ -23,7 +23,7 @@ export class FakeSummarizer implements Summarizer {
   }
 }
 
-/** An error shaped like the OpenAI SDK's APIError for a given HTTP status. */
-export function httpError(status: number, message = `HTTP ${status}`): Error {
-  return Object.assign(new Error(message), { status });
+/** What the real summarizer throws for an HTTP error with the given status. */
+export function httpError(status: number, message = `HTTP ${status}`): SummarizerError {
+  return new SummarizerError(message, 'http', status);
 }

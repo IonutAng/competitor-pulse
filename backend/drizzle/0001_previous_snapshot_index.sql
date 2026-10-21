@@ -1,0 +1,3 @@
+CREATE INDEX "snapshots_previous_idx" ON "snapshots" USING btree ("previous_snapshot_id");--> statement-breakpoint
+ALTER TABLE "snapshots" ADD CONSTRAINT "snapshots_attempts_non_negative" CHECK ("snapshots"."summary_attempts" >= 0);--> statement-breakpoint
+ALTER TABLE "snapshots" ADD CONSTRAINT "snapshots_changed_has_fields" CHECK (NOT "snapshots"."changed" OR cardinality("snapshots"."changed_fields") > 0);

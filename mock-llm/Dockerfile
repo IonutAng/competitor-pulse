@@ -1,5 +1,5 @@
 # The provided mock LLM server, unmodified. Zero dependencies, so a slim base image is enough.
-FROM python:3.13-slim
+FROM python:3.13.16-slim
 
 WORKDIR /srv
 COPY mock-llm-server.py .
