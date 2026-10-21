@@ -13,10 +13,10 @@ export function testConfig(overrides: NodeJS.ProcessEnv = {}): Config {
   });
 }
 
-export function testDeps(db: Db, overrides: NodeJS.ProcessEnv = {}): Deps {
-  return buildDeps(testConfig(overrides), db);
+export function testDeps(db: Db, env: NodeJS.ProcessEnv = {}, overrides: Partial<Pick<Deps, 'source'>> = {}): Deps {
+  return buildDeps(testConfig(env), db, overrides);
 }
 
-export function buildTestApp(db: Db, overrides: NodeJS.ProcessEnv = {}) {
-  return buildApp(testDeps(db, overrides), { logger: false });
+export function buildTestApp(deps: Deps) {
+  return buildApp(deps, { logger: false });
 }

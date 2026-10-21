@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { buildTestApp } from '../helpers/app.js';
+import { buildTestApp, testDeps } from '../helpers/app.js';
 import { setupTestDb, type TestDb } from '../helpers/db.js';
 
 describe('competitors API', () => {
@@ -8,7 +8,7 @@ describe('competitors API', () => {
 
   beforeAll(async () => {
     t = await setupTestDb();
-    app = buildTestApp(t.db);
+    app = buildTestApp(testDeps(t.db));
     await app.ready();
   });
   beforeEach(() => t.reset());

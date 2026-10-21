@@ -11,6 +11,7 @@ import type { Deps } from './deps.js';
 import { HttpError } from './http-error.js';
 import { competitorRoutes } from './routes/competitors.js';
 import { healthRoutes } from './routes/health.js';
+import { snapshotRoutes } from './routes/snapshots.js';
 
 export type AppDeps = Deps;
 
@@ -63,6 +64,7 @@ export function buildApp(deps: AppDeps, serverOptions: FastifyServerOptions = {}
 
   app.register(healthRoutes, deps);
   app.register(competitorRoutes, deps);
+  app.register(snapshotRoutes, deps);
 
   return app;
 }

@@ -14,7 +14,7 @@ const newCompetitorBody = z.object({
 });
 
 // Lookups by id do not validate the format: an id that cannot exist is simply not found.
-const idParams = z.object({ id: z.string().min(1) });
+export const idParams = z.object({ id: z.string().min(1) });
 
 export function toCompetitorDto(row: CompetitorRow) {
   return {
@@ -25,7 +25,7 @@ export function toCompetitorDto(row: CompetitorRow) {
   };
 }
 
-export const competitorRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { competitors }) => {
+export const competitorRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { competitors, source }) => {
   app.get('/api/competitors', async () => {
     const rows = await competitors.list();
     return rows.map(toCompetitorDto);
@@ -44,6 +44,7 @@ export const competitorRoutes: FastifyPluginAsyncZod<AppDeps> = async (app, { co
     if (!deleted) {
       throw new HttpError(404, 'not_found', `Competitor "${request.params.id}" is not tracked`);
     }
+    source.forget?.(request.params.id);
     return reply.status(204).send();
   });
 };
