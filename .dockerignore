@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/coverage
+.git
+.env
+.env.*
+**/.DS_Store
+backend/public
+*.md
